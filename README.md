@@ -1,5 +1,3 @@
----
-
 # Inventix: Inventory Management System
 
 **Inventix** is a lightweight, scalable inventory management system designed to help small to medium businesses manage their inventory seamlessly. The application allows users to track products, manage stock levels, handle orders, and monitor inventory changes with a RESTful API. Built with Spring Boot and following a test-driven development approach, Inventix ensures high-quality, modular code for easy extension.
