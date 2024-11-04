@@ -1,5 +1,3 @@
-Here's a detailed README template for your **Inventix** project, covering the project overview, installation instructions, features, and technologies used. You can adjust the descriptions as you expand on features or if you want to emphasize specific parts of the application.
-
 ---
 
 # Inventix: Inventory Management System
