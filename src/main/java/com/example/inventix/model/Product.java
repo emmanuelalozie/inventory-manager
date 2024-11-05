@@ -1,7 +1,9 @@
 package com.example.inventix.model;
 
 import jakarta.persistence.*;
+import lombok.AllArgsConstructor;
 import lombok.Data;
+import lombok.NoArgsConstructor;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -9,6 +11,8 @@ import java.time.LocalDateTime;
 @Entity
 @Table(name = "products")
 @Data
+@AllArgsConstructor
+@NoArgsConstructor
 public class Product {
 
     @Id
