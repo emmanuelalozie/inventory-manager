@@ -5,6 +5,17 @@
 ## Features
 
 ### Current Features
+
+- **API Endpoints**
+  - Expose RESTful API endpoints for external integrations.
+  - CRUD operations for products, orders, and stock levels.
+
+- **Test-Driven Development (TDD)**
+  - Comprehensive unit and integration tests for robust, reliable code.
+  - Testing layers include repository, service, and controller, ensuring complete coverage.
+
+### Planned Features
+
 - **Product Management**
   - Add, update, view, and delete products.
   - Track product details including SKU, price, description, and quantity.
@@ -16,16 +27,7 @@
 - **Order Tracking**
   - Manage purchase and sales orders.
   - Track inventory adjustments automatically when orders are fulfilled.
-
-- **API Endpoints**
-  - Expose RESTful API endpoints for external integrations.
-  - CRUD operations for products, orders, and stock levels.
-
-- **Test-Driven Development (TDD)**
-  - Comprehensive unit and integration tests for robust, reliable code.
-  - Testing layers include repository, service, and controller, ensuring complete coverage.
-
-### Planned Features
+  - 
 - **Role-Based Access Control (RBAC)**
   - Add authentication and authorization for different user roles (e.g., admin, inventory manager).
   
