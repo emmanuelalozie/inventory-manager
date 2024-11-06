@@ -2,8 +2,8 @@ package com.example.inventix.service;
 
 import com.example.inventix.model.Order;
 import com.example.inventix.model.OrderStatus;
+
 import java.util.List;
-import java.util.Optional;
 
 /**
  * Service interface for managing orders, providing CRUD operations and
@@ -12,9 +12,14 @@ import java.util.Optional;
 public interface OrderService {
 
     Order createOrder(Order order);
-    Optional<Order> getOrderById(Long id);
+
+    Order getOrderById(Long id);
+
     Order updateOrder(Long id, Order order);
+
     void deleteOrder(Long id);
+
     List<Order> getAllOrders();
+
     Order updateOrderStatus(Long id, OrderStatus status);
 }

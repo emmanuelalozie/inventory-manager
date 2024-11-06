@@ -1,7 +1,7 @@
 package com.example.inventix.service.impl;
 
+import com.example.inventix.exception.InsufficientStockException;
 import com.example.inventix.exception.OrderNotFoundException;
-import com.example.inventix.exception.ProductNotFoundException;
 import com.example.inventix.model.Order;
 import com.example.inventix.model.OrderItem;
 import com.example.inventix.model.OrderStatus;
@@ -14,7 +14,6 @@ import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
 import java.util.List;
-import java.util.Optional;
 
 @Service
 public class OrderServiceImpl implements OrderService {
@@ -33,10 +32,16 @@ public class OrderServiceImpl implements OrderService {
         BigDecimal totalAmount = BigDecimal.ZERO;
 
         for (OrderItem item : order.getOrderItems()) {
-            Product product = productService.getProductById(item.getProduct().getId())
-                    .orElseThrow(() -> new RuntimeException("Product not found"));
+            Product product = productService.getProductById(item.getProduct().getId());
 
-            item.setOrder(order); // Link OrderItem to Order
+            if (product.getQuantity() < item.getQuantity()) {
+                throw new InsufficientStockException("Not enough stock for product: " + product.getName());
+            }
+
+            product.setQuantity(product.getQuantity() - item.getQuantity());
+            productService.updateProduct(product.getId(), product);
+
+            item.setOrder(order);
             item.setPricePerUnit(product.getPrice());
             item.setSubtotal(product.getPrice().multiply(BigDecimal.valueOf(item.getQuantity())));
 
@@ -48,8 +53,8 @@ public class OrderServiceImpl implements OrderService {
     }
 
     @Override
-    public Optional<Order> getOrderById(Long id){
-        return Optional.ofNullable(orderRepository.findById(id)
+    public Order getOrderById(Long id) {
+        return (orderRepository.findById(id)
                 .orElseThrow(() -> new OrderNotFoundException("Order not found with id: " + id)));
     }
 
@@ -59,12 +64,31 @@ public class OrderServiceImpl implements OrderService {
                 .orElseThrow(() -> new OrderNotFoundException("Order not found with id: " + id));
 
         BigDecimal totalAmount = BigDecimal.ZERO;
+
+        // Restore product quantities for existing items in the order
+        for (OrderItem existingItem : orderToUpdate.getOrderItems()) {
+            Product product = productService.getProductById(existingItem.getProduct().getId());
+            product.setQuantity(product.getQuantity() + existingItem.getQuantity());
+            productService.updateProduct(product.getId(), product);
+        }
+
+        // Clear existing items to replace with updated items
         orderToUpdate.getOrderItems().clear();
 
+        // Process each item in the updated order
         for (OrderItem item : order.getOrderItems()) {
-            Product product = productService.getProductById(item.getProduct().getId())
-                    .orElseThrow(() -> new RuntimeException("Product not found"));
+            Product product = productService.getProductById(item.getProduct().getId());
 
+            // Check if there is enough stock for the new quantity requested
+            if (product.getQuantity() < item.getQuantity()) {
+                throw new InsufficientStockException("Not enough stock for product: " + product.getName());
+            }
+
+            // Adjust product stock based on the requested quantity
+            product.setQuantity(product.getQuantity() - item.getQuantity());
+            productService.updateProduct(product.getId(), product);
+
+            // Set up OrderItem details
             item.setOrder(orderToUpdate);
             item.setPricePerUnit(product.getPrice());
             item.setSubtotal(product.getPrice().multiply(BigDecimal.valueOf(item.getQuantity())));
@@ -73,12 +97,24 @@ public class OrderServiceImpl implements OrderService {
             orderToUpdate.getOrderItems().add(item);
         }
 
+        // Update the total amount for the order
         orderToUpdate.setTotalAmount(totalAmount);
         return orderRepository.save(orderToUpdate);
     }
 
     @Override
     public void deleteOrder(Long id) {
+        Order orderToDelete = orderRepository.findById(id)
+                .orElseThrow(() -> new OrderNotFoundException("Order not found with id: " + id));
+
+        for (OrderItem item : orderToDelete.getOrderItems()) {
+
+            Product product = productService.getProductById(item.getProduct().getId());
+            product.setQuantity(product.getQuantity() + item.getQuantity());
+            productService.updateProduct(product.getId(), product);
+        }
+
+        orderRepository.delete(orderToDelete);
     }
 
     @Override

@@ -39,7 +39,7 @@ class ProductRepositoryTest {
     @Test
     void testFindById() {
         Product savedProduct = productRepository.save(product);
-        Optional<Product> foundProduct = productRepository.findById(savedProduct.getId());
+        Product foundProduct = productRepository.findById(savedProduct.getId());
         assertThat(foundProduct).isPresent();
         assertThat(foundProduct.get().getName()).isEqualTo("Sample Product");
     }
