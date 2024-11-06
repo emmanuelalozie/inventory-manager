@@ -8,8 +8,8 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.http.MediaType;
-import org.springframework.security.test.context.support.WithMockUser;
-import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors;
+// import org.springframework.security.test.context.support.WithMockUser;
+// import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.math.BigDecimal;
@@ -44,7 +44,7 @@ class ProductControllerTest {
      * @throws Exception if a request error occurs
      */
     @Test
-    @WithMockUser(username = "testuser", roles = {"USER"})
+    // @WithMockUser(username = "testuser", roles = {"USER"})
     void testGetAllProducts() throws Exception {
         // Arrange: Set up a sample product and mock the service's getAllProducts method
         Product product = new Product(1L, "Sample Product", "SKU12345", "Description", BigDecimal.valueOf(99.99), 100, null, null);
@@ -66,7 +66,7 @@ class ProductControllerTest {
      * @throws Exception if a request error occurs
      */
     @Test
-    @WithMockUser(username = "testuser", roles = {"USER"})
+    // @WithMockUser(username = "testuser", roles = {"USER"})
     void testCreateProduct() throws Exception {
         // Arrange: Set up a sample product and mock the service's createProduct method
         Product product = new Product(1L, "Sample Product", "SKU12345", "Description", BigDecimal.valueOf(99.99), 100, null, null);
@@ -74,7 +74,7 @@ class ProductControllerTest {
 
         // Act & Assert: Perform POST request with JSON content and validate the response
         mockMvc.perform(post("/api/products")
-                        .with(SecurityMockMvcRequestPostProcessors.csrf()) // Include CSRF token for POST request
+                        // .with(SecurityMockMvcRequestPostProcessors.csrf()) // Include CSRF token for POST request
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"name\":\"Sample Product\",\"sku\":\"SKU12345\",\"description\":\"Description\",\"price\":99.99,\"quantity\":100}"))
                 .andExpect(status().isCreated())

@@ -1,10 +1,16 @@
 package com.example.inventix.model;
 
 import jakarta.persistence.*;
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.NoArgsConstructor;
 
 import java.math.BigDecimal;
 
 @Entity
+@AllArgsConstructor
+@NoArgsConstructor
+@Data
 public class OrderItem {
     @Id
     @GeneratedValue
@@ -20,4 +26,5 @@ public class OrderItem {
 
     private int quantity;
     private BigDecimal pricePerUnit;
+    private BigDecimal subtotal;
 }

@@ -18,7 +18,6 @@ public class Order {
     @Id
     @GeneratedValue
     private Long id;
-    private LocalDate orderDate;
     private OrderStatus status;
     private BigDecimal totalAmount;
 
