@@ -112,6 +112,9 @@ public class OrderServiceImpl implements OrderService {
         return orderRepository.save(orderToUpdate);
     }
 
+    //TODO When deleting an order, check if order is completed. If so
+    // - leave product quantity as is. IF not, append products in order
+    // - items back into product item's quantity
     @Override
     public void deleteOrder(Long id) {
         Order orderToDelete = orderRepository.findById(id)
