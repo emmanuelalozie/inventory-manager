@@ -15,6 +15,7 @@ import org.springframework.stereotype.Service;
 import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 
 @Service
 public class OrderServiceImpl implements OrderService {
@@ -61,30 +62,50 @@ public class OrderServiceImpl implements OrderService {
 
     @Override
     public Order updateOrder(Long id, Order order) {
+        // Retrieve the existing order from the repository
         Order orderToUpdate = orderRepository.findById(id)
                 .orElseThrow(() -> new OrderNotFoundException("Order not found with id: " + id));
 
         BigDecimal totalAmount = BigDecimal.ZERO;
 
-        for (OrderItem item : order.getOrderItems()) {
-            Product product = productService.getProductById(item.getProduct().getId());
+        // Clear current items to update with new items
+        orderToUpdate.getOrderItems().clear();
 
-            // Check if there is enough stock for the new quantity requested
-            if (product.getQuantity() < item.getQuantity()) {
-                throw new InsufficientStockException("Not enough stock for product: " + product.getName());
+        for (OrderItem newItem : order.getOrderItems()) {
+            Product product = productService.getProductById(newItem.getProduct().getId());
+
+            // Find the matching OrderItem in the existing order (if it exists)
+            Optional<OrderItem> existingItemOpt = orderToUpdate.getOrderItems().stream()
+                    .filter(item -> item.getProduct().getId().equals(newItem.getProduct().getId()))
+                    .findFirst();
+
+            int existingQuantity = existingItemOpt.map(OrderItem::getQuantity).orElse(0);
+            int newQuantity = newItem.getQuantity();
+            int quantityDifference = newQuantity - existingQuantity;
+
+            // If the quantity has increased, check stock availability
+            if (quantityDifference > 0) {
+                if (product.getQuantity() < quantityDifference) {
+                    throw new InsufficientStockException("Not enough stock for product: " + product.getName());
+                }
+                product.setQuantity(product.getQuantity() - quantityDifference);
+            }
+            // If the quantity has decreased, return the difference to stock
+            else if (quantityDifference < 0) {
+                product.setQuantity(product.getQuantity() - quantityDifference); // Adds back the stock
             }
 
-            // Adjust product stock based on the requested quantity only once
-            product.setQuantity(product.getQuantity() - item.getQuantity());
+            // Update product stock and save
             productService.updateProduct(product.getId(), product);
 
-            // Set up OrderItem details
-            item.setOrder(orderToUpdate);
-            item.setPricePerUnit(product.getPrice());
-            item.setSubtotal(product.getPrice().multiply(BigDecimal.valueOf(item.getQuantity())));
-            totalAmount = totalAmount.add(item.getSubtotal());
+            // Set up new item details
+            newItem.setOrder(orderToUpdate);
+            newItem.setPricePerUnit(product.getPrice());
+            newItem.setSubtotal(product.getPrice().multiply(BigDecimal.valueOf(newItem.getQuantity())));
+            totalAmount = totalAmount.add(newItem.getSubtotal());
 
-            orderToUpdate.getOrderItems().add(item);
+            // Add updated item to the order
+            orderToUpdate.getOrderItems().add(newItem);
         }
 
         orderToUpdate.setTotalAmount(totalAmount);

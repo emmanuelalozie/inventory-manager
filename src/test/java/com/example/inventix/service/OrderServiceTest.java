@@ -118,13 +118,22 @@ class OrderServiceTest {
 
     @Test
     void updateOrder_ShouldThrowException_WhenStockIsInsufficient() {
-        sampleProduct.setQuantity(5); // Available quantity
-        sampleItem.setQuantity(10);   // Requested quantity, should trigger exception
+        // Set up initial order state with lower quantity
+        sampleProduct.setQuantity(5); // Available quantity in stock
+        sampleItem.setQuantity(3);    // Existing quantity in the order
+
+        // Create a new order request with a higher quantity to simulate an update
+        Order updatedOrder = new Order();
+        OrderItem updatedItem = new OrderItem();
+        updatedItem.setProduct(sampleProduct);
+        updatedItem.setQuantity(10); // New requested quantity, which is too high
+        updatedOrder.setOrderItems(List.of(updatedItem));
 
         when(orderRepository.findById(1L)).thenReturn(Optional.of(sampleOrder));
         when(productService.getProductById(sampleProduct.getId())).thenReturn(sampleProduct);
 
-        assertThrows(InsufficientStockException.class, () -> orderService.updateOrder(1L, sampleOrder));
+        // Assert that the InsufficientStockException is thrown
+        assertThrows(InsufficientStockException.class, () -> orderService.updateOrder(1L, updatedOrder));
         verify(orderRepository, never()).save(any(Order.class));
     }
 
