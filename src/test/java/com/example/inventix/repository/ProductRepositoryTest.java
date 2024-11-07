@@ -39,7 +39,8 @@ class ProductRepositoryTest {
     @Test
     void testFindById() {
         Product savedProduct = productRepository.save(product);
-        Product foundProduct = productRepository.findById(savedProduct.getId());
+        Optional<Product> foundProduct = productRepository.findById(savedProduct.getId());
+
         assertThat(foundProduct).isPresent();
         assertThat(foundProduct.get().getName()).isEqualTo("Sample Product");
     }
@@ -56,7 +57,7 @@ class ProductRepositoryTest {
     void testDeleteProduct() {
         Product savedProduct = productRepository.save(product);
         productRepository.deleteById(savedProduct.getId());
-        Optional<Product> deletedProduct = productRepository.findById(savedProduct.getId());
-        assertThat(deletedProduct).isNotPresent();
+        boolean exists = productRepository.findById(savedProduct.getId()).isPresent();
+        assertThat(exists).isFalse();
     }
 }
