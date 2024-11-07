@@ -113,7 +113,7 @@ class OrderServiceTest {
 
         assertEquals(updatedOrder.getOrderItems().size(), result.getOrderItems().size());
         verify(orderRepository, times(1)).save(any(Order.class));
-        verify(productService, times(1)).updateProduct(sampleProduct.getId(), sampleProduct);
+        verify(productService, times(2)).updateProduct(sampleProduct.getId(), sampleProduct);
     }
 
     @Test

@@ -61,55 +61,12 @@ public class OrderServiceImpl implements OrderService {
     }
 
     @Override
-    public Order updateOrder(Long id, Order order) {
-        // Retrieve the existing order from the repository
-        Order orderToUpdate = orderRepository.findById(id)
-                .orElseThrow(() -> new OrderNotFoundException("Order not found with id: " + id));
+    public Order updateOrder(Long id, Order updatedOrder) {
+        // Step 1: Delete the existing order, which should restore stock levels
+        deleteOrder(id);
 
-        BigDecimal totalAmount = BigDecimal.ZERO;
-
-        // Clear current items to update with new items
-        orderToUpdate.getOrderItems().clear();
-
-        for (OrderItem newItem : order.getOrderItems()) {
-            Product product = productService.getProductById(newItem.getProduct().getId());
-
-            // Find the matching OrderItem in the existing order (if it exists)
-            Optional<OrderItem> existingItemOpt = orderToUpdate.getOrderItems().stream()
-                    .filter(item -> item.getProduct().getId().equals(newItem.getProduct().getId()))
-                    .findFirst();
-
-            int existingQuantity = existingItemOpt.map(OrderItem::getQuantity).orElse(0);
-            int newQuantity = newItem.getQuantity();
-            int quantityDifference = newQuantity - existingQuantity;
-
-            // If the quantity has increased, check stock availability
-            if (quantityDifference > 0) {
-                if (product.getQuantity() < quantityDifference) {
-                    throw new InsufficientStockException("Not enough stock for product: " + product.getName());
-                }
-                product.setQuantity(product.getQuantity() - quantityDifference);
-            }
-            // If the quantity has decreased, return the difference to stock
-            else if (quantityDifference < 0) {
-                product.setQuantity(product.getQuantity() - quantityDifference); // Adds back the stock
-            }
-
-            // Update product stock and save
-            productService.updateProduct(product.getId(), product);
-
-            // Set up new item details
-            newItem.setOrder(orderToUpdate);
-            newItem.setPricePerUnit(product.getPrice());
-            newItem.setSubtotal(product.getPrice().multiply(BigDecimal.valueOf(newItem.getQuantity())));
-            totalAmount = totalAmount.add(newItem.getSubtotal());
-
-            // Add updated item to the order
-            orderToUpdate.getOrderItems().add(newItem);
-        }
-
-        orderToUpdate.setTotalAmount(totalAmount);
-        return orderRepository.save(orderToUpdate);
+        // Step 2: Save the updated order, applying stock adjustments for the new items
+        return createOrder(updatedOrder);
     }
 
     //TODO When deleting an order, check if order is completed. If so
