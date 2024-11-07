@@ -62,11 +62,48 @@ public class OrderServiceImpl implements OrderService {
 
     @Override
     public Order updateOrder(Long id, Order updatedOrder) {
-        // Step 1: Delete the existing order, which should restore stock levels
-        deleteOrder(id);
+        // Retrieve the existing order by its id
+        Order orderToUpdate = orderRepository.findById(id)
+                .orElseThrow(() -> new OrderNotFoundException("Order not found with id: " + id));
 
-        // Step 2: Save the updated order, applying stock adjustments for the new items
-        return createOrder(updatedOrder);
+        BigDecimal totalAmount = BigDecimal.ZERO;
+
+        // Clear out existing OrderItems but keep the Order itself
+        for (OrderItem existingItem : orderToUpdate.getOrderItems()) {
+            Product product = productService.getProductById(existingItem.getProduct().getId());
+            // Restore product stock for the old items
+            product.setQuantity(product.getQuantity() + existingItem.getQuantity());
+            productService.updateProduct(product.getId(), product);
+        }
+        orderToUpdate.getOrderItems().clear();
+
+        // Add the new or updated OrderItems from updatedOrder
+        for (OrderItem newItem : updatedOrder.getOrderItems()) {
+            Product product = productService.getProductById(newItem.getProduct().getId());
+
+            // Check if there’s enough stock for the new quantity
+            if (product.getQuantity() < newItem.getQuantity()) {
+                throw new InsufficientStockException("Not enough stock for product: " + product.getName());
+            }
+
+            // Deduct stock for the new items
+            product.setQuantity(product.getQuantity() - newItem.getQuantity());
+            productService.updateProduct(product.getId(), product);
+
+            // Set up OrderItem details and add to the order
+            newItem.setOrder(orderToUpdate);
+            newItem.setPricePerUnit(product.getPrice());
+            newItem.setSubtotal(product.getPrice().multiply(BigDecimal.valueOf(newItem.getQuantity())));
+            orderToUpdate.getOrderItems().add(newItem);
+
+            totalAmount = totalAmount.add(newItem.getSubtotal());
+        }
+
+        // Update the total amount on the existing order
+        orderToUpdate.setTotalAmount(totalAmount);
+
+        // Save and return the updated order
+        return orderRepository.save(orderToUpdate);
     }
 
     //TODO When deleting an order, check if order is completed. If so
