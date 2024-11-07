@@ -42,7 +42,6 @@ class OrderServiceTest {
     void setUp() {
         MockitoAnnotations.openMocks(this);
 
-        // Initialize sampleProduct and sampleItem correctly
         sampleProduct = new Product();
         sampleProduct.setId(1L);
         sampleProduct.setName("Sample Product");
@@ -50,12 +49,15 @@ class OrderServiceTest {
         sampleProduct.setQuantity(10);
 
         sampleItem = new OrderItem();
-        sampleItem.setProduct(sampleProduct);  // Link Product to OrderItem
+        sampleItem.setProduct(sampleProduct); // Link Product to OrderItem
         sampleItem.setQuantity(2);
 
         sampleOrder = new Order();
         sampleOrder.setId(1L);
-        sampleOrder.setOrderItems(new ArrayList<>(List.of(sampleItem))); // Mutable list with linked product
+        sampleOrder.setOrderItems(new ArrayList<>(List.of(sampleItem))); // Ensure the list is mutable
+
+        // Debug: Assert to confirm setup is correct
+        assertNotNull(sampleItem.getProduct(), "Product should not be null in OrderItem after setup");
     }
 
     @Test
