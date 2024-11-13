@@ -29,6 +29,8 @@ public class OrderServiceImpl implements OrderService {
         this.productService = productService;
     }
 
+    //TODO Fix this; OrderItem should handle updates to the OrderItem, not Order.
+    // Order itself should be updated here.
     @Override
     public Order createOrder(Order order) {
         BigDecimal totalAmount = BigDecimal.ZERO;
