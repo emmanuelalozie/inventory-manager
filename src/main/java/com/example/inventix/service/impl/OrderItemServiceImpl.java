@@ -1,5 +1,7 @@
 package com.example.inventix.service.impl;
 
+import com.example.inventix.exception.OrderItemNotFoundException;
+import com.example.inventix.exception.OrderNotFoundException;
 import com.example.inventix.model.OrderItem;
 import com.example.inventix.repository.OrderItemRepository;
 import com.example.inventix.service.OrderItemService;
@@ -14,8 +16,13 @@ public class OrderItemServiceImpl implements OrderItemService {
         this.orderItemRepository = orderItemRepository;
     }
 
-    public OrderItem saveOrderItem(OrderItem orderItem) {
+    public OrderItem createOrderItem(OrderItem orderItem) {
         return orderItemRepository.save(orderItem);
+    }
+
+    public OrderItem getOrderItem(Long id){
+        return orderItemRepository.findById(id)
+                .orElseThrow(() -> new OrderItemNotFoundException("Order Item not found with id: " + id));
     }
 
     public void deleteOrderItem(Long id) {
