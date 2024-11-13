@@ -13,12 +13,14 @@
 - **Test-Driven Development (TDD)**
   - Comprehensive unit and integration tests for robust, reliable code.
   - Testing layers include repository, service, and controller, ensuring complete coverage.
-
-### Planned Features
-
+  - 
 - **Product Management**
   - Add, update, view, and delete products.
   - Track product details including SKU, price, description, and quantity.
+
+### Planned Features
+
+
   
 - **Stock Control**
   - Monitor stock levels in real-time.
