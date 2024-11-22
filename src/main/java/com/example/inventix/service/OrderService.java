@@ -1,21 +1,22 @@
 package com.example.inventix.service;
 
 import com.example.inventix.model.Order;
+import com.example.inventix.model.OrderItem;
 import com.example.inventix.model.OrderStatus;
 
 import java.util.List;
 
-/**
- * Service interface for managing orders, providing CRUD operations and
- * additional functionality for updating order status.
- */
 public interface OrderService {
 
     Order createOrder(Order order);
 
+    Order createOrderWithItems(Order order, List<OrderItem> orderItems);
+
     Order getOrderById(Long id);
 
-    Order updateOrder(Long id, Order order);
+    Order updateOrder(Long id, Order updatedOrder);
+
+    Order addOrderItems(Long orderId, List<OrderItem> newItems);
 
     void deleteOrder(Long id);
 
