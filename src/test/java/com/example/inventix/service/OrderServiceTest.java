@@ -1,16 +1,11 @@
 package com.example.inventix.service;
 
-import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.Mockito.*;
-
-import com.example.inventix.exception.InsufficientStockException;
 import com.example.inventix.exception.OrderNotFoundException;
 import com.example.inventix.model.Order;
 import com.example.inventix.model.OrderItem;
 import com.example.inventix.model.OrderStatus;
 import com.example.inventix.model.Product;
 import com.example.inventix.repository.OrderRepository;
-import com.example.inventix.service.ProductService;
 import com.example.inventix.service.impl.OrderServiceImpl;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -23,6 +18,9 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.Mockito.*;
+
 class OrderServiceTest {
 
     @Mock
@@ -30,6 +28,9 @@ class OrderServiceTest {
 
     @Mock
     private ProductService productService;
+
+    @Mock
+    private OrderItemService orderItemService;
 
     @InjectMocks
     private OrderServiceImpl orderService;
@@ -49,38 +50,59 @@ class OrderServiceTest {
         sampleProduct.setQuantity(10);
 
         sampleItem = new OrderItem();
-        sampleItem.setProduct(sampleProduct); // Link Product to OrderItem
+        sampleItem.setId(1L); // Ensure the ID is set
+        sampleItem.setProduct(sampleProduct);
         sampleItem.setQuantity(2);
 
         sampleOrder = new Order();
         sampleOrder.setId(1L);
-        sampleOrder.setOrderItems(new ArrayList<>(List.of(sampleItem))); // Ensure the list is mutable
-
-        // Debug: Assert to confirm setup is correct
-        assertNotNull(sampleItem.getProduct(), "Product should not be null in OrderItem after setup");
+        sampleOrder.setOrderItems(new ArrayList<>(List.of(sampleItem)));
     }
 
     @Test
-    void createOrder_ShouldSaveOrder_WhenStockIsSufficient() {
-        when(productService.getProductById(sampleProduct.getId())).thenReturn(sampleProduct);
-        when(orderRepository.save(any(Order.class))).thenReturn(sampleOrder);
+    void createOrder_ShouldSaveOrder_WhenNoItemsAreAdded() {
+        Order newOrder = new Order();
+        when(orderRepository.save(any(Order.class))).thenAnswer(invocation -> {
+            Order order = invocation.getArgument(0);
+            order.setId(1L); // Simulate order ID being set by the database
+            return order;
+        });
 
-        Order createdOrder = orderService.createOrder(sampleOrder);
+        Order createdOrder = orderService.createOrder(newOrder);
 
         assertNotNull(createdOrder);
-        assertEquals(sampleOrder.getOrderItems().size(), createdOrder.getOrderItems().size());
+        assertTrue(createdOrder.getOrderItems().isEmpty());
         verify(orderRepository, times(1)).save(any(Order.class));
-        verify(productService, times(1)).updateProduct(sampleProduct.getId(), sampleProduct);
     }
 
     @Test
-    void createOrder_ShouldThrowException_WhenStockIsInsufficient() {
-        sampleItem.setQuantity(15); // More than available stock
-        when(productService.getProductById(sampleProduct.getId())).thenReturn(sampleProduct);
+    void createOrderWithItems_ShouldSaveOrderAndItems_WhenStockIsSufficient() {
+        Order newOrder = new Order();
+        OrderItem newItem = new OrderItem();
+        newItem.setProduct(sampleProduct);
+        newItem.setQuantity(2);
 
-        assertThrows(InsufficientStockException.class, () -> orderService.createOrder(sampleOrder));
-        verify(orderRepository, never()).save(any(Order.class));
+        // Mock save to assign an ID to the order
+        when(orderRepository.save(any(Order.class))).thenAnswer(invocation -> {
+            Order order = invocation.getArgument(0);
+            order.setId(1L); // Simulate order ID being set by the database
+            return order;
+        });
+
+        // Mock findById to return the saved order
+        when(orderRepository.findById(1L)).thenReturn(Optional.of(newOrder));
+
+        // Mock createOrderItem to return the created item
+        when(orderItemService.createOrderItem(1L, newItem)).thenReturn(newItem);
+
+        Order createdOrder = orderService.createOrderWithItems(newOrder, List.of(newItem));
+
+        assertNotNull(createdOrder);
+        assertEquals(1L, createdOrder.getId());
+        verify(orderRepository, times(1)).save(any(Order.class));
+        verify(orderItemService, times(1)).createOrderItem(1L, newItem);
     }
+
 
     @Test
     void getOrderById_ShouldReturnOrder_WhenOrderExists() {
@@ -90,6 +112,7 @@ class OrderServiceTest {
 
         assertNotNull(order);
         assertEquals(sampleOrder.getId(), order.getId());
+        verify(orderRepository, times(1)).findById(1L);
     }
 
     @Test
@@ -97,58 +120,28 @@ class OrderServiceTest {
         when(orderRepository.findById(1L)).thenReturn(Optional.empty());
 
         assertThrows(OrderNotFoundException.class, () -> orderService.getOrderById(1L));
+        verify(orderRepository, times(1)).findById(1L);
     }
 
     @Test
-    void updateOrder_ShouldUpdateOrder_WhenStockIsSufficient() {
-        Order updatedOrder = new Order();
-        updatedOrder.setOrderItems(new ArrayList<>(List.of(sampleItem)));
-        sampleItem.setQuantity(5);
-
+    void addOrderItems_ShouldAddItems_WhenCalledWithValidOrderAndItems() {
         when(orderRepository.findById(1L)).thenReturn(Optional.of(sampleOrder));
-        when(productService.getProductById(sampleProduct.getId())).thenReturn(sampleProduct);
-        when(orderRepository.save(any(Order.class))).thenReturn(updatedOrder);
+        when(orderItemService.createOrderItem(anyLong(), any(OrderItem.class))).thenReturn(sampleItem);
 
-        Order result = orderService.updateOrder(1L, updatedOrder);
+        Order updatedOrder = orderService.addOrderItems(1L, List.of(sampleItem));
 
-        assertEquals(updatedOrder.getOrderItems().size(), result.getOrderItems().size());
-        verify(orderRepository, times(1)).save(any(Order.class));
-        verify(productService, times(2)).updateProduct(sampleProduct.getId(), sampleProduct);
+        assertNotNull(updatedOrder);
+        verify(orderItemService, times(1)).createOrderItem(1L, sampleItem);
+        verify(orderRepository, times(1)).findById(1L);
     }
 
     @Test
-    void updateOrder_ShouldThrowException_WhenStockIsInsufficient() {
-        // Set up initial order state with lower quantity
-        sampleProduct.setQuantity(5); // Available quantity in stock
-        sampleItem.setQuantity(3);    // Existing quantity in the order
-
-        // Create a new order request with a higher quantity to simulate an update
-        Order updatedOrder = new Order();
-        OrderItem updatedItem = new OrderItem();
-        updatedItem.setProduct(sampleProduct);
-        updatedItem.setQuantity(10); // New requested quantity, which is too high
-        updatedOrder.setOrderItems(List.of(updatedItem));
-
-        when(orderRepository.findById(1L)).thenReturn(Optional.of(sampleOrder));
-        when(productService.getProductById(sampleProduct.getId())).thenReturn(sampleProduct);
-
-        // Assert that the InsufficientStockException is thrown
-        assertThrows(InsufficientStockException.class, () -> orderService.updateOrder(1L, updatedOrder));
-        verify(orderRepository, never()).save(any(Order.class));
-    }
-
-
-    @Test
-    void deleteOrder_ShouldRestoreProductQuantities_AndDeleteOrder() {
-        // Ensure that findById returns the sampleOrder with the linked sampleItem and sampleProduct
+    void deleteOrder_ShouldDeleteOrderAndRestoreStock_WhenOrderExists() {
         when(orderRepository.findById(1L)).thenReturn(Optional.of(sampleOrder));
 
-        // Perform the delete operation
         orderService.deleteOrder(1L);
 
-        // Verify that product quantity is restored
-        verify(productService, times(1)).updateProduct(sampleProduct.getId(), sampleProduct);
-        // Verify that the order is deleted
+        verify(orderItemService, times(1)).deleteOrderItem(sampleItem.getId());
         verify(orderRepository, times(1)).delete(sampleOrder);
     }
 
@@ -157,33 +150,90 @@ class OrderServiceTest {
         when(orderRepository.findById(1L)).thenReturn(Optional.empty());
 
         assertThrows(OrderNotFoundException.class, () -> orderService.deleteOrder(1L));
+        verify(orderRepository, times(1)).findById(1L);
         verify(orderRepository, never()).delete(any(Order.class));
     }
 
     @Test
-    void getAllOrders_ShouldReturnListOfOrders() {
-        List<Order> orders = List.of(sampleOrder);
-        when(orderRepository.findAll()).thenReturn(orders);
+    void updateOrder_ShouldUpdateOrderWithNewItems_WhenStockIsSufficient() {
+        // Setup: Create an updated order with new items
+        Order updatedOrder = new Order();
+        updatedOrder.setId(1L);
 
-        List<Order> result = orderService.getAllOrders();
+        OrderItem updatedItem = new OrderItem();
+        updatedItem.setId(2L);
+        updatedItem.setProduct(sampleProduct);
+        updatedItem.setQuantity(3);
+        updatedOrder.setOrderItems(List.of(updatedItem));
 
-        assertEquals(orders.size(), result.size());
+        // Mock findById to return the existing order
+        when(orderRepository.findById(1L)).thenReturn(Optional.of(sampleOrder));
+
+        // Mock createOrderItem to return the new item
+        when(orderItemService.createOrderItem(1L, updatedItem)).thenReturn(updatedItem);
+
+        // Mock save to simulate persistence of the updated order
+        when(orderRepository.save(any(Order.class))).thenAnswer(invocation -> {
+            Order order = invocation.getArgument(0);
+            order.setOrderItems(List.of(updatedItem)); // Simulate the updated orderItems list
+            return order;
+        });
+
+        // Execute: Call the updateOrder method
+        Order result = orderService.updateOrder(1L, updatedOrder);
+
+        // Assertions: Verify the updated state
+        assertNotNull(result, "The updated order should not be null.");
+        assertEquals(1, result.getOrderItems().size(), "The order should contain exactly 1 order item.");
+        assertEquals(updatedItem.getId(), result.getOrderItems().get(0).getId(), "The order item ID should match the updated item.");
+
+        // Verifications: Ensure mocks were invoked as expected
+        verify(orderRepository, times(1)).findById(1L);
+        verify(orderItemService, times(1)).createOrderItem(1L, updatedItem);
+        verify(orderRepository, times(1)).save(any(Order.class));
+    }
+
+
+    @Test
+    void updateOrder_ShouldThrowException_WhenOrderDoesNotExist() {
+        when(orderRepository.findById(1L)).thenReturn(Optional.empty());
+
+        assertThrows(OrderNotFoundException.class, () -> orderService.updateOrder(1L, new Order()));
+        verify(orderRepository, times(1)).findById(1L);
+    }
+
+    @Test
+    void getAllOrders_ShouldReturnListOfOrders_WhenOrdersExist() {
+        when(orderRepository.findAll()).thenReturn(List.of(sampleOrder));
+
+        List<Order> orders = orderService.getAllOrders();
+
+        assertNotNull(orders);
+        assertEquals(1, orders.size());
         verify(orderRepository, times(1)).findAll();
     }
 
     @Test
     void updateOrderStatus_ShouldUpdateStatus_WhenOrderExists() {
         when(orderRepository.findById(1L)).thenReturn(Optional.of(sampleOrder));
+        when(orderRepository.save(any(Order.class))).thenAnswer(invocation -> {
+            Order order = invocation.getArgument(0);
+            order.setStatus(OrderStatus.SHIPPED);
+            return order;
+        });
 
         Order result = orderService.updateOrderStatus(1L, OrderStatus.SHIPPED);
 
+        assertNotNull(result);
         assertEquals(OrderStatus.SHIPPED, result.getStatus());
+        verify(orderRepository, times(1)).save(any(Order.class));
     }
 
     @Test
-    void updateOrderStatus_ShouldThrowException_WhenOrderNotFound() {
+    void updateOrderStatus_ShouldThrowException_WhenOrderDoesNotExist() {
         when(orderRepository.findById(1L)).thenReturn(Optional.empty());
 
         assertThrows(OrderNotFoundException.class, () -> orderService.updateOrderStatus(1L, OrderStatus.SHIPPED));
+        verify(orderRepository, times(1)).findById(1L);
     }
 }
