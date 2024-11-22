@@ -4,8 +4,8 @@ import com.example.inventix.exception.ProductNotFoundException;
 import com.example.inventix.model.Product;
 import com.example.inventix.repository.ProductRepository;
 import com.example.inventix.service.ProductService;
-import org.springframework.stereotype.Service;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
 
 import java.util.List;
 

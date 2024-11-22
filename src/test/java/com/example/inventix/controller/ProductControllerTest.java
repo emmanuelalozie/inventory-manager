@@ -8,20 +8,21 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.http.MediaType;
-import org.springframework.security.test.context.support.WithMockUser;
-import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.math.BigDecimal;
 import java.util.Arrays;
+import java.util.List;
 
 import static org.mockito.Mockito.when;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
  * Unit tests for ProductController.
- *
+ * <p>
  * This class uses @WebMvcTest to test the ProductController, with all external dependencies mocked.
  * The @WithMockUser annotation is used to simulate an authenticated user, allowing secure endpoints
  * to be tested.
@@ -37,18 +38,18 @@ class ProductControllerTest {
 
     /**
      * Test for retrieving all products.
-     *
+     * <p>
      * This test verifies that the endpoint returns a list of products with status 200 OK.
      * It uses a mocked ProductService to return a sample product list.
      *
      * @throws Exception if a request error occurs
      */
     @Test
-    @WithMockUser(username = "testuser", roles = {"USER"})
+    // @WithMockUser(username = "testuser", roles = {"USER"})
     void testGetAllProducts() throws Exception {
         // Arrange: Set up a sample product and mock the service's getAllProducts method
         Product product = new Product(1L, "Sample Product", "SKU12345", "Description", BigDecimal.valueOf(99.99), 100, null, null);
-        when(productService.getAllProducts()).thenReturn(Arrays.asList(product));
+        when(productService.getAllProducts()).thenReturn(List.of(product));
 
         // Act & Assert: Perform GET request and validate the response
         mockMvc.perform(get("/api/products"))
@@ -58,7 +59,7 @@ class ProductControllerTest {
 
     /**
      * Test for creating a new product.
-     *
+     * <p>
      * This test verifies that a POST request to the create product endpoint returns
      * status 201 Created and the expected product data. CSRF token is included in the
      * request to pass Spring Security's CSRF check.
@@ -66,7 +67,7 @@ class ProductControllerTest {
      * @throws Exception if a request error occurs
      */
     @Test
-    @WithMockUser(username = "testuser", roles = {"USER"})
+    // @WithMockUser(username = "testuser", roles = {"USER"})
     void testCreateProduct() throws Exception {
         // Arrange: Set up a sample product and mock the service's createProduct method
         Product product = new Product(1L, "Sample Product", "SKU12345", "Description", BigDecimal.valueOf(99.99), 100, null, null);
@@ -74,7 +75,7 @@ class ProductControllerTest {
 
         // Act & Assert: Perform POST request with JSON content and validate the response
         mockMvc.perform(post("/api/products")
-                        .with(SecurityMockMvcRequestPostProcessors.csrf()) // Include CSRF token for POST request
+                        // .with(SecurityMockMvcRequestPostProcessors.csrf()) // Include CSRF token for POST request
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"name\":\"Sample Product\",\"sku\":\"SKU12345\",\"description\":\"Description\",\"price\":99.99,\"quantity\":100}"))
                 .andExpect(status().isCreated())
