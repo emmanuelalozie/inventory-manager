@@ -78,7 +78,7 @@
    ./gradlew bootRun
    ```
 
-4. Access the API at `http://localhost:8080/api` once the server starts.
+4. Access the API at `http://localhost:8080/api/swagger` once the server starts.
 
 ## Contributing
 
