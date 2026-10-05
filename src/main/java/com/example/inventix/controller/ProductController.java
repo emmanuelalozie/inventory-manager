@@ -1,17 +1,22 @@
 package com.example.inventix.controller;
 
+import com.example.inventix.dto.StockAdjustmentRequest;
 import com.example.inventix.model.Product;
 import com.example.inventix.service.ProductService;
+import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
 
+import java.net.URI;
 import java.util.List;
 
 @RestController
 @RequestMapping("/api/products")
 public class ProductController {
+
+    static final String DEFAULT_LOW_STOCK_THRESHOLD = "10";
 
     private final ProductService productService;
 
@@ -25,6 +30,12 @@ public class ProductController {
         return productService.getAllProducts();
     }
 
+    @GetMapping("/low-stock")
+    public List<Product> getLowStockProducts(
+            @RequestParam(defaultValue = DEFAULT_LOW_STOCK_THRESHOLD) int threshold) {
+        return productService.getLowStockProducts(threshold);
+    }
+
     @GetMapping("/{id}")
     public ResponseEntity<Product> getProductById(@PathVariable Long id) {
         Product product = productService.getProductById(id);
@@ -32,16 +43,28 @@ public class ProductController {
     }
 
     @PostMapping
-    public ResponseEntity<Product> createProduct(@RequestBody Product product) {
+    public ResponseEntity<Product> createProduct(@Valid @RequestBody Product product) {
         Product createdProduct = productService.createProduct(product);
-        return ResponseEntity.status(HttpStatus.CREATED).body(createdProduct);
+        URI location = ServletUriComponentsBuilder.fromCurrentRequest()
+                .path("/{id}")
+                .buildAndExpand(createdProduct.getId())
+                .toUri();
+        return ResponseEntity.created(location).body(createdProduct);
     }
 
     @PutMapping("/{id}")
     public ResponseEntity<Product> updateProduct(
             @PathVariable Long id,
-            @RequestBody Product productDetails) {
+            @Valid @RequestBody Product productDetails) {
         Product updatedProduct = productService.updateProduct(id, productDetails);
+        return ResponseEntity.ok(updatedProduct);
+    }
+
+    @PatchMapping("/{id}/stock")
+    public ResponseEntity<Product> adjustStock(
+            @PathVariable Long id,
+            @Valid @RequestBody StockAdjustmentRequest request) {
+        Product updatedProduct = productService.adjustStock(id, request.delta());
         return ResponseEntity.ok(updatedProduct);
     }
 

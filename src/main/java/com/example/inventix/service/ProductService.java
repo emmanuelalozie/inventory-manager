@@ -13,5 +13,14 @@ public interface ProductService {
 
     List<Product> getAllProducts();
 
+    List<Product> getLowStockProducts(int threshold);
+
+    /**
+     * Changes the stock of a product by {@code delta} (positive to restock, negative to remove).
+     *
+     * @throws com.example.inventix.exception.InsufficientStockException if the stock would go below zero
+     */
+    Product adjustStock(Long id, int delta);
+
     void deleteProduct(Long id);
 }

@@ -1,5 +1,7 @@
 package com.example.inventix.service;
 
+import com.example.inventix.exception.InsufficientStockException;
+import com.example.inventix.exception.InvalidOrderStateException;
 import com.example.inventix.exception.OrderNotFoundException;
 import com.example.inventix.model.Order;
 import com.example.inventix.model.OrderItem;
@@ -19,6 +21,7 @@ import java.util.List;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.AdditionalAnswers.returnsFirstArg;
 import static org.mockito.Mockito.*;
 
 class OrderServiceTest {
@@ -235,5 +238,195 @@ class OrderServiceTest {
 
         assertThrows(OrderNotFoundException.class, () -> orderService.updateOrderStatus(1L, OrderStatus.SHIPPED));
         verify(orderRepository, times(1)).findById(1L);
+    }
+
+    @Test
+    void createOrder_ShouldStartAsEmptyPendingOrderWithZeroTotal_WhateverTheInput() {
+        Order input = new Order();
+        input.setId(42L);
+        input.setStatus(OrderStatus.DELIVERED);
+        input.setTotalAmount(new BigDecimal("999.99"));
+        input.setOrderItems(new ArrayList<>(List.of(sampleItem)));
+        when(orderRepository.save(any(Order.class))).thenAnswer(invocation -> {
+            Order order = invocation.getArgument(0);
+            assertNull(order.getId(), "createOrder must insert a new order, not overwrite order 42");
+            order.setId(1L);
+            return order;
+        });
+
+        Order created = orderService.createOrder(input);
+
+        assertEquals(1L, created.getId());
+        assertEquals(OrderStatus.PENDING, created.getStatus());
+        assertEquals(0, BigDecimal.ZERO.compareTo(created.getTotalAmount()));
+        assertTrue(created.getOrderItems().isEmpty(), "Items must go through OrderItemService so stock is reserved");
+    }
+
+    @Test
+    void createOrderWithItems_ShouldReturnOrderWithTotalOfItsItems() {
+        Order newOrder = new Order();
+        when(orderRepository.save(any(Order.class))).thenAnswer(invocation -> {
+            Order order = invocation.getArgument(0);
+            order.setId(1L);
+            return order;
+        });
+        when(orderRepository.findById(1L)).thenReturn(Optional.of(newOrder));
+        // Act like OrderItemServiceImpl: price the item and attach it, which recalculates the order total.
+        when(orderItemService.createOrderItem(eq(1L), any(OrderItem.class))).thenAnswer(invocation -> {
+            OrderItem item = invocation.getArgument(1);
+            item.setPricePerUnit(item.getProduct().getPrice());
+            item.recalculateSubtotal();
+            newOrder.addItem(item);
+            return item;
+        });
+        OrderItem first = new OrderItem();
+        first.setProduct(sampleProduct);
+        first.setQuantity(2);
+        OrderItem second = new OrderItem();
+        second.setProduct(sampleProduct);
+        second.setQuantity(1);
+
+        Order created = orderService.createOrderWithItems(newOrder, List.of(first, second));
+
+        assertEquals(OrderStatus.PENDING, created.getStatus());
+        assertEquals(2, created.getOrderItems().size());
+        assertEquals(0, new BigDecimal("150").compareTo(created.getTotalAmount()));
+    }
+
+    @Test
+    void createOrderWithItems_ShouldPropagateInsufficientStock() {
+        when(orderRepository.save(any(Order.class))).thenAnswer(invocation -> {
+            Order order = invocation.getArgument(0);
+            order.setId(1L);
+            return order;
+        });
+        when(orderItemService.createOrderItem(eq(1L), any(OrderItem.class)))
+                .thenThrow(new InsufficientStockException("Not enough stock for product 'Sample Product'"));
+        OrderItem tooMany = new OrderItem();
+        tooMany.setProduct(sampleProduct);
+        tooMany.setQuantity(11);
+
+        assertThrows(InsufficientStockException.class,
+                () -> orderService.createOrderWithItems(new Order(), List.of(tooMany)));
+    }
+
+    @Test
+    void updateOrder_ShouldThrowInvalidState_WhenOrderIsNotPending() {
+        sampleOrder.setStatus(OrderStatus.SHIPPED);
+        when(orderRepository.findById(1L)).thenReturn(Optional.of(sampleOrder));
+
+        assertThrows(InvalidOrderStateException.class, () -> orderService.updateOrder(1L, new Order()));
+        verify(orderItemService, never()).deleteOrderItem(anyLong());
+        verify(orderItemService, never()).createOrderItem(anyLong(), any(OrderItem.class));
+        verify(orderRepository, never()).save(any(Order.class));
+    }
+
+    @Test
+    void updateOrder_ShouldRemoveOldItemsBeforeAddingNewOnes() {
+        when(orderRepository.findById(1L)).thenReturn(Optional.of(sampleOrder));
+        when(orderRepository.save(any(Order.class))).thenAnswer(returnsFirstArg());
+        OrderItem replacement = new OrderItem();
+        replacement.setProduct(sampleProduct);
+        replacement.setQuantity(4);
+        Order changes = new Order();
+        changes.setOrderItems(List.of(replacement));
+
+        orderService.updateOrder(1L, changes);
+
+        // Old stock is given back first, then the new item reserves stock, each exactly once.
+        var sequence = inOrder(orderItemService);
+        sequence.verify(orderItemService).deleteOrderItem(sampleItem.getId());
+        sequence.verify(orderItemService).createOrderItem(1L, replacement);
+        verify(orderItemService, times(1)).createOrderItem(anyLong(), any(OrderItem.class));
+    }
+
+    @Test
+    void deleteOrder_ShouldNotRestoreStock_WhenOrderWasShipped() {
+        sampleOrder.setStatus(OrderStatus.SHIPPED);
+        when(orderRepository.findById(1L)).thenReturn(Optional.of(sampleOrder));
+
+        orderService.deleteOrder(1L);
+
+        verify(orderItemService, never()).deleteOrderItem(anyLong());
+        verify(productService, never()).adjustStock(anyLong(), anyInt());
+        verify(orderRepository, times(1)).delete(sampleOrder);
+    }
+
+    @Test
+    void updateOrderStatus_ToCancelled_ShouldRestoreStockOfEveryItem() {
+        when(orderRepository.findById(1L)).thenReturn(Optional.of(sampleOrder));
+        when(orderRepository.save(any(Order.class))).thenAnswer(returnsFirstArg());
+
+        Order result = orderService.updateOrderStatus(1L, OrderStatus.CANCELLED);
+
+        assertEquals(OrderStatus.CANCELLED, result.getStatus());
+        verify(productService, times(1)).adjustStock(sampleProduct.getId(), sampleItem.getQuantity());
+        assertEquals(1, result.getOrderItems().size(), "Cancelled orders keep their items as a record");
+    }
+
+    @Test
+    void updateOrderStatus_ToShipped_ShouldNotTouchStock() {
+        when(orderRepository.findById(1L)).thenReturn(Optional.of(sampleOrder));
+        when(orderRepository.save(any(Order.class))).thenAnswer(returnsFirstArg());
+
+        orderService.updateOrderStatus(1L, OrderStatus.SHIPPED);
+
+        verify(productService, never()).adjustStock(anyLong(), anyInt());
+    }
+
+    @Test
+    void updateOrderStatus_ShouldFollowAllowedTransitions() {
+        when(orderRepository.findById(1L)).thenReturn(Optional.of(sampleOrder));
+        when(orderRepository.save(any(Order.class))).thenAnswer(returnsFirstArg());
+
+        orderService.updateOrderStatus(1L, OrderStatus.SHIPPED);
+        Order delivered = orderService.updateOrderStatus(1L, OrderStatus.DELIVERED);
+
+        assertEquals(OrderStatus.DELIVERED, delivered.getStatus());
+    }
+
+    @Test
+    void updateOrderStatus_ShouldThrowInvalidState_ForForbiddenTransition() {
+        sampleOrder.setStatus(OrderStatus.DELIVERED);
+        when(orderRepository.findById(1L)).thenReturn(Optional.of(sampleOrder));
+
+        assertThrows(InvalidOrderStateException.class,
+                () -> orderService.updateOrderStatus(1L, OrderStatus.CANCELLED));
+        assertEquals(OrderStatus.DELIVERED, sampleOrder.getStatus());
+        verify(orderRepository, never()).save(any(Order.class));
+        verify(productService, never()).adjustStock(anyLong(), anyInt());
+    }
+
+    @Test
+    void updateOrderStatus_ShouldNotCancelTwice() {
+        sampleOrder.setStatus(OrderStatus.CANCELLED);
+        when(orderRepository.findById(1L)).thenReturn(Optional.of(sampleOrder));
+
+        // Same status: nothing to do, and the stock must not be restored a second time.
+        Order result = orderService.updateOrderStatus(1L, OrderStatus.CANCELLED);
+
+        assertEquals(OrderStatus.CANCELLED, result.getStatus());
+        verify(productService, never()).adjustStock(anyLong(), anyInt());
+        verify(orderRepository, never()).save(any(Order.class));
+    }
+
+    @Test
+    void getOrdersByStatus_ShouldQueryRepository() {
+        when(orderRepository.findByStatus(OrderStatus.PENDING)).thenReturn(List.of(sampleOrder));
+
+        List<Order> orders = orderService.getOrdersByStatus(OrderStatus.PENDING);
+
+        assertEquals(List.of(sampleOrder), orders);
+    }
+
+    @Test
+    void orderStatus_TransitionRules() {
+        assertTrue(OrderStatus.PENDING.canTransitionTo(OrderStatus.SHIPPED));
+        assertTrue(OrderStatus.PENDING.canTransitionTo(OrderStatus.CANCELLED));
+        assertTrue(OrderStatus.SHIPPED.canTransitionTo(OrderStatus.DELIVERED));
+        assertFalse(OrderStatus.PENDING.canTransitionTo(OrderStatus.DELIVERED));
+        assertFalse(OrderStatus.SHIPPED.canTransitionTo(OrderStatus.CANCELLED));
+        assertFalse(OrderStatus.DELIVERED.canTransitionTo(OrderStatus.PENDING));
+        assertFalse(OrderStatus.CANCELLED.canTransitionTo(OrderStatus.PENDING));
     }
 }

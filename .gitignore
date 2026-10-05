@@ -35,3 +35,18 @@ out/
 
 ### VS Code ###
 .vscode/
+
+### Desktop app (Tauri) ###
+desktop/node_modules/
+desktop/src-tauri/target/
+
+### Local files ###
+.jdk/
+*.log
+*.mv.db
+*.trace.db
+.env
+.env.*
+Thumbs.db
+desktop.ini
+.DS_Store

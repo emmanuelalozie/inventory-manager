@@ -1,10 +1,11 @@
 package com.example.inventix.service.impl;
 
-import com.example.inventix.exception.InsufficientStockException;
+import com.example.inventix.exception.InvalidOrderStateException;
 import com.example.inventix.exception.OrderItemNotFoundException;
 import com.example.inventix.exception.OrderNotFoundException;
 import com.example.inventix.model.Order;
 import com.example.inventix.model.OrderItem;
+import com.example.inventix.model.OrderStatus;
 import com.example.inventix.model.Product;
 import com.example.inventix.repository.OrderItemRepository;
 import com.example.inventix.repository.OrderRepository;
@@ -12,11 +13,13 @@ import com.example.inventix.service.OrderItemService;
 import com.example.inventix.service.ProductService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
-import java.math.BigDecimal;
+import java.util.ArrayList;
 import java.util.List;
 
 @Service
+@Transactional
 public class OrderItemServiceImpl implements OrderItemService {
 
     private final OrderItemRepository orderItemRepository;
@@ -34,68 +37,98 @@ public class OrderItemServiceImpl implements OrderItemService {
 
     @Override
     public OrderItem createOrderItem(Long orderId, OrderItem orderItem) {
-        Order order = orderRepository.findById(orderId)
-                .orElseThrow(() -> new OrderNotFoundException("Order not found with id: " + orderId));
+        Order order = findOrder(orderId);
+        ensureEditable(order);
 
-        Product product = productService.getProductById(orderItem.getProduct().getId());
-        if (product.getQuantity() < orderItem.getQuantity()) {
-            throw new InsufficientStockException("Not enough stock for product: " + product.getName());
+        if (orderItem.getProduct() == null || orderItem.getProduct().getId() == null) {
+            throw new IllegalArgumentException("productId is required");
         }
-        product.setQuantity(product.getQuantity() - orderItem.getQuantity());
-        productService.updateProduct(product.getId(), product);
+        requirePositiveQuantity(orderItem.getQuantity());
 
-        orderItem.setOrder(order);
+        // Reserve the stock; throws InsufficientStockException if there isn't enough.
+        Product product = productService.adjustStock(orderItem.getProduct().getId(), -orderItem.getQuantity());
+
+        orderItem.setId(null);
+        orderItem.setProduct(product);
         orderItem.setPricePerUnit(product.getPrice());
-        orderItem.setSubtotal(product.getPrice().multiply(BigDecimal.valueOf(orderItem.getQuantity())));
-
-        order.getOrderItems().add(orderItem);
-        orderRepository.save(order); // Save the order with the new item
+        orderItem.recalculateSubtotal();
+        order.addItem(orderItem); // also recalculates the order total
 
         return orderItemRepository.save(orderItem);
     }
 
     @Override
     public OrderItem updateOrderItem(Long itemId, OrderItem updatedItem) {
-        OrderItem existingItem = orderItemRepository.findById(itemId)
-                .orElseThrow(() -> new OrderItemNotFoundException("OrderItem not found with id: " + itemId));
+        OrderItem existingItem = findItem(itemId);
+        Order order = existingItem.getOrder();
+        ensureEditable(order);
+        requirePositiveQuantity(updatedItem.getQuantity());
 
-        Product product = productService.getProductById(existingItem.getProduct().getId());
-        product.setQuantity(product.getQuantity() + existingItem.getQuantity());
-
-        if (product.getQuantity() < updatedItem.getQuantity()) {
-            throw new InsufficientStockException("Not enough stock for product: " + product.getName());
+        // Positive delta returns stock to the product, negative delta takes more.
+        int delta = existingItem.getQuantity() - updatedItem.getQuantity();
+        if (delta != 0) {
+            productService.adjustStock(existingItem.getProduct().getId(), delta);
         }
 
-        product.setQuantity(product.getQuantity() - updatedItem.getQuantity());
-        productService.updateProduct(product.getId(), product);
-
+        // The unit price stays as it was when the item was added to the order.
         existingItem.setQuantity(updatedItem.getQuantity());
-        existingItem.setPricePerUnit(product.getPrice());
-        existingItem.setSubtotal(product.getPrice().multiply(BigDecimal.valueOf(updatedItem.getQuantity())));
+        existingItem.recalculateSubtotal();
+        order.recalculateTotal();
 
         return orderItemRepository.save(existingItem);
     }
 
     @Override
     public void deleteOrderItem(Long itemId) {
-        OrderItem orderItem = orderItemRepository.findById(itemId)
-                .orElseThrow(() -> new OrderItemNotFoundException("OrderItem not found with id: " + itemId));
+        OrderItem orderItem = findItem(itemId);
+        Order order = orderItem.getOrder();
+        ensureEditable(order);
 
         // Restore product stock
-        Product product = orderItem.getProduct();
-        product.setQuantity(product.getQuantity() + orderItem.getQuantity());
-        productService.updateProduct(product.getId(), product);
+        productService.adjustStock(orderItem.getProduct().getId(), orderItem.getQuantity());
 
-        // Remove the OrderItem from the Order's list
-        Order order = orderItem.getOrder();
-        order.getOrderItems().remove(orderItem); // Orphan removal ensures this is deleted
-        orderRepository.save(order);
+        // Unlink the item (this also recalculates the order total), then delete it explicitly:
+        // orphan removal misses items that were added in the same session and not flushed yet.
+        order.removeItem(orderItem);
+        orderItemRepository.delete(orderItem);
     }
 
     @Override
     public List<OrderItem> getOrderItemsByOrderId(Long orderId) {
-        Order order = orderRepository.findById(orderId)
+        return new ArrayList<>(findOrder(orderId).getOrderItems());
+    }
+
+    @Override
+    public OrderItem getOrderItem(Long orderId, Long itemId) {
+        findOrder(orderId);
+        OrderItem item = findItem(itemId);
+        if (item.getOrder() == null || !orderId.equals(item.getOrder().getId())) {
+            throw new OrderItemNotFoundException("OrderItem " + itemId + " not found in order " + orderId);
+        }
+        return item;
+    }
+
+    private Order findOrder(Long orderId) {
+        return orderRepository.findById(orderId)
                 .orElseThrow(() -> new OrderNotFoundException("Order not found with id: " + orderId));
-        return order.getOrderItems();
+    }
+
+    private OrderItem findItem(Long itemId) {
+        return orderItemRepository.findById(itemId)
+                .orElseThrow(() -> new OrderItemNotFoundException("OrderItem not found with id: " + itemId));
+    }
+
+    // Only pending orders hold reserved stock, so only they can have their items changed.
+    private void ensureEditable(Order order) {
+        if (order.getStatus() != null && order.getStatus() != OrderStatus.PENDING) {
+            throw new InvalidOrderStateException("Order " + order.getId() + " is " + order.getStatus()
+                    + "; only PENDING orders can be changed");
+        }
+    }
+
+    private void requirePositiveQuantity(int quantity) {
+        if (quantity <= 0) {
+            throw new IllegalArgumentException("quantity must be greater than 0");
+        }
     }
 }
