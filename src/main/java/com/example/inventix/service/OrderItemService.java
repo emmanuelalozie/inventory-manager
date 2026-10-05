@@ -13,4 +13,9 @@ public interface OrderItemService {
     void deleteOrderItem(Long itemId);
 
     List<OrderItem> getOrderItemsByOrderId(Long orderId);
+
+    /**
+     * Returns the item, or throws OrderItemNotFoundException if it doesn't exist or belongs to another order.
+     */
+    OrderItem getOrderItem(Long orderId, Long itemId);
 }
