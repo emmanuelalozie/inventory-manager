@@ -1,17 +1,24 @@
-# Inventix REST API (v1)
+# Inventix REST API (v2)
 
 This is the contract between the Inventix backend and the desktop UI.
 
-- **Base URL:** `http://localhost:8080`
+- **Base URL:** `http://localhost:8080` (or `http://127.0.0.1:8080`)
+- **Local only:** the server binds to `127.0.0.1` (`server.address`), so only programs on the same machine can
+  reach it. Other machines on the network can't connect.
+- **Authentication:** none, by design. Inventix has one user on one machine, and the localhost binding replaces
+  a login. Don't change `server.address` without adding authentication first.
 - **Content type:** every request body and response body is JSON (`Content-Type: application/json`).
-- **Authentication:** none. Spring Security is switched off in v1.
-- **Database:** in-memory H2. Data is lost when the backend stops. Five sample products are added on startup
-  (turn this off with `inventix.seed-data=false`).
-- **H2 console:** `http://localhost:8080/h2-console` (JDBC URL `jdbc:h2:mem:inventix`, user `sa`, no password).
+- **Responses are DTOs.** No endpoint returns or accepts a JPA entity. The shapes below are the full response
+  bodies.
+- **Database:** H2 file database `jdbc:h2:file:./data/inventix`, kept between restarts. The schema is managed by
+  Flyway. Five sample products are added on the first start only, when there are no products (turn this off with
+  `inventix.seed-data=false`).
+- **H2 console:** `http://localhost:8080/h2-console` (JDBC URL `jdbc:h2:file:./data/inventix`, user `sa`, no
+  password).
 
 ## CORS
 
-Requests to `/api/**` are allowed from these origins:
+Unchanged since v1. Requests to `/api/**` are allowed from these origins:
 
 | Origin | Used by |
 |---|---|
@@ -30,12 +37,12 @@ If the Tauri app sets `app.security.csp`, its `connect-src` must include `http:/
 ## Data types
 
 - Money (`price`, `pricePerUnit`, `subtotal`, `totalAmount`) is a JSON number with up to 2 decimals, e.g. `24.99`.
-- Entity timestamps (`createdAt`, `updatedAt`) are local date-times without a zone, e.g. `"2026-10-04T10:15:30.123456"`.
-  `updatedAt` is `null` until the record is changed for the first time.
-- The error `timestamp` is a UTC instant, e.g. `"2026-10-04T08:15:30.123456Z"`.
+- Product, order and movement timestamps (`createdAt`, `updatedAt`) are local date-times without a zone, e.g.
+  `"2026-10-04T10:15:30.123456"`. `updatedAt` is `null` until the record is changed for the first time.
+- The error `timestamp` and the backup `createdAt` are UTC instants, e.g. `"2026-10-04T08:15:30.123456Z"`.
 - IDs are positive integers.
 
-### Product
+### Product (`ProductResponse`)
 
 ```json
 {
@@ -51,6 +58,9 @@ If the Tauri app sets `app.security.csp`, its `connect-src` must include `http:/
 }
 ```
 
+Requests to `POST` and `PUT /api/products` use `ProductRequest`: `name`, `sku`, `description`, `price`,
+`quantity` and `version`. Any other field (`id`, `createdAt`, `updatedAt`, …) is ignored.
+
 | Field | Type | Rules |
 |---|---|---|
 | `id` | number | Read-only. Ignored in request bodies. |
@@ -58,11 +68,11 @@ If the Tauri app sets `app.security.csp`, its `connect-src` must include `http:/
 | `sku` | string | Required, not blank, max 64 characters, unique across products |
 | `description` | string or null | Optional, max 1000 characters |
 | `price` | number | Required, >= 0 |
-| `quantity` | integer | Required, >= 0. This is the stock on hand. |
+| `quantity` | integer | The stock on hand, >= 0. Required on `POST` (the starting stock). Optional on `PUT`, and it can't change there (see [`PUT /api/products/{id}`](#put-apiproductsid)). |
 | `createdAt`, `updatedAt` | string | Read-only, set by the server |
 | `version` | integer | Optimistic-lock counter, set by the server. Starts at `0` and goes up on every change (including stock changes from orders). Ignored on `POST`. Optional on `PUT`: if sent, it must match the stored value or the call fails with **409**. |
 
-### Order
+### Order (`OrderResponse`)
 
 ```json
 {
@@ -83,23 +93,18 @@ If the Tauri app sets `app.security.csp`, its `connect-src` must include `http:/
 | `createdAt`, `updatedAt` | string | Set by the server |
 | `orderItems` | array of OrderItem | Empty array if the order has no items |
 
-### OrderItem
+### OrderItem (`OrderItemResponse`)
+
+The product is flattened to `productId`, `productName` and `productSku`. Since v2 there is no nested `product`
+object.
 
 ```json
 {
   "id": 3,
   "orderId": 1,
-  "product": {
-    "id": 1,
-    "name": "Wireless Mouse",
-    "sku": "WM-001",
-    "description": "2.4 GHz wireless optical mouse",
-    "price": 24.99,
-    "quantity": 118,
-    "createdAt": "2026-10-04T10:15:30.123456",
-    "updatedAt": "2026-10-04T10:20:00.000001",
-    "version": 1
-  },
+  "productId": 1,
+  "productName": "Wireless Mouse",
+  "productSku": "WM-001",
   "quantity": 2,
   "pricePerUnit": 24.99,
   "subtotal": 49.98
@@ -110,7 +115,8 @@ If the Tauri app sets `app.security.csp`, its `connect-src` must include `http:/
 |---|---|---|
 | `id` | number | |
 | `orderId` | number | The order this item belongs to |
-| `product` | Product | The full product **as it is now**, including its current stock in `product.quantity` |
+| `productId` | number | The ordered product |
+| `productName`, `productSku` | string | The product's **current** name and SKU. For its current stock, read the product from `/api/products`. |
 | `quantity` | integer | Units ordered (> 0) |
 | `pricePerUnit` | number | The product price when the item was added. It does not change if the product price changes later. |
 | `subtotal` | number | `quantity × pricePerUnit` |
@@ -133,6 +139,67 @@ PENDING ──> SHIPPED ──> DELIVERED
 - Only `PENDING` orders can have items added, changed or removed, or be replaced with `PUT`. For any other
   status these calls return **409**.
 
+### StockMovement (`StockMovementResponse`)
+
+One row of the stock ledger (`stock_movements` table). Movements are written by the server and can't be created,
+changed or deleted through the API.
+
+```json
+{
+  "id": 17,
+  "productId": 3,
+  "productName": "USB-C Hub",
+  "productSku": "HUB-003",
+  "delta": -2,
+  "reason": "SALE",
+  "note": "Added to order #5",
+  "orderId": 5,
+  "purchaseOrderId": null,
+  "locationId": null,
+  "createdAt": "2026-10-04T15:30:00.123456"
+}
+```
+
+| Field | Type | Notes |
+|---|---|---|
+| `id` | number | |
+| `productId`, `productName`, `productSku` | number, string, string | The product whose stock changed (current name and SKU) |
+| `delta` | integer | Change in stock: positive adds, negative removes. Never `0`. |
+| `reason` | string | One of the `MovementReason` values below |
+| `note` | string or null | Free text, max 500 characters. Always set for `ADJUSTMENT`. Order movements get a generated note, e.g. `"Order #5 cancelled"`. |
+| `orderId` | number or null | The order that caused the change. Kept after a `PENDING` order is deleted, so it can point to an order that no longer exists. |
+| `purchaseOrderId` | number or null | Reserved for purchase-order receipts. Always `null` for now. |
+| `locationId` | number or null | Reserved for multiple locations. Always `null` for now. |
+| `createdAt` | string | When the change was made (local date-time, no zone) |
+
+### MovementReason
+
+| Value | Written when |
+|---|---|
+| `SALE` | An item is added to an order, or an item's quantity is raised |
+| `CANCEL` | An item is removed or its quantity lowered, an order is replaced with `PUT`, cancelled, or deleted while `PENDING` |
+| `RECEIPT` | Stock received from a supplier. Reserved: no endpoint writes it yet. |
+| `PRODUCTION` | Stock made in-house. Reserved: no endpoint writes it yet. |
+| `ADJUSTMENT` | `PATCH /api/products/{id}/stock` (note required), and the starting stock of a new product (note `"Initial stock"`) |
+
+### Backup (`BackupResponse`)
+
+```json
+{
+  "fileName": "inventix-backup-20261004-153000.zip",
+  "path": "C:\\Users\\me\\inventory-manager\\backups\\inventix-backup-20261004-153000.zip",
+  "sizeBytes": 20480,
+  "createdAt": "2026-10-04T15:30:00.512Z"
+}
+```
+
+| Field | Type | Notes |
+|---|---|---|
+| `fileName` | string | `inventix-backup-<yyyyMMdd-HHmmss>.zip`, with `-1`, `-2`, … added if a file with that name already exists |
+| `path` | string | Absolute path of the zip file on the backend machine |
+| `sizeBytes` | number | Size of the zip file |
+| `createdAt` | string | When the backup finished (UTC instant) |
+
 ### Stock rules
 
 - Adding an item to an order takes `quantity` units out of the product's stock. If there isn't enough
@@ -145,6 +212,11 @@ PENDING ──> SHIPPED ──> DELIVERED
 - Stock changes use optimistic locking on the product (`version`). If two requests change the same product at the
   same moment, the one that commits second fails with **409** ("The data was changed by another request at the
   same time. Reload it and try again.") and nothing in it is saved, so stock can't be oversold. Retry the request.
+- **Every stock change writes a `StockMovement`** in the same transaction, so if the change fails, no movement is
+  written. A product's movements add up to its `quantity`.
+- Stock can only change through orders, `PATCH /api/products/{id}/stock` and the starting stock on
+  `POST /api/products`. `PUT /api/products/{id}` can't change it.
+- Deleting a product also deletes its movements.
 
 ## Error body
 
@@ -160,7 +232,8 @@ Every error response (4xx and 5xx) has this shape:
 }
 ```
 
-Validation errors (400) also include `fieldErrors`. It is left out of every other error.
+Validation errors (400) also include `fieldErrors`, and so does the 400 for a changed `quantity` on
+`PUT /api/products/{id}`. It is left out of every other error.
 
 ```json
 {
@@ -180,12 +253,12 @@ For nested fields, `field` uses paths like `items[0].quantity`.
 
 | Status | When |
 |---|---|
-| 400 | Validation failed (`fieldErrors` present), malformed JSON, unknown enum value in the body, a path or query parameter of the wrong type (e.g. `/api/products/abc`), a missing required parameter |
+| 400 | Validation failed (`fieldErrors` present), malformed JSON, unknown enum value in the body or query (e.g. `?reason=FOO`), a path or query parameter of the wrong type (e.g. `/api/products/abc`), a missing required parameter, a stock `delta` of `0`, a changed `quantity` on product `PUT`, `page` < 0 or `size` outside 1–500 on movement lists |
 | 404 | Product, order or order item not found, an item that belongs to a different order, or an unknown URL |
 | 405 | HTTP method not supported on that path |
-| 409 | Not enough stock, invalid status change, changing a non-`PENDING` order, duplicate SKU, deleting a product that is used by an order, a stale product `version`, or a concurrent change to the same product |
+| 409 | Not enough stock, invalid status change, changing a non-`PENDING` order, duplicate SKU, deleting a product that is used by an order, a stale product `version`, a concurrent change to the same product, or a backup requested while the database is in memory |
 | 415 | Body isn't sent as `application/json` |
-| 500 | Unexpected server error (`message` is `"An unexpected error occurred"`) |
+| 500 | Unexpected server error (`message` is `"An unexpected error occurred"`), or a backup that failed (`message` says why) |
 
 ## Endpoints
 
@@ -196,8 +269,10 @@ For nested fields, `field` uses paths like `items[0].quantity`.
 | GET | `/api/products/{id}` | 200 | Get one product |
 | POST | `/api/products` | 201 | Create a product |
 | PUT | `/api/products/{id}` | 200 | Replace a product's fields |
-| PATCH | `/api/products/{id}/stock` | 200 | Add to or remove from stock |
-| DELETE | `/api/products/{id}` | 204 | Delete a product |
+| PATCH | `/api/products/{id}/stock` | 200 | Add to or remove from stock, with a required note |
+| DELETE | `/api/products/{id}` | 204 | Delete a product and its movements |
+| GET | `/api/products/{id}/movements` | 200 | A product's stock movements, newest first |
+| GET | `/api/stock-movements` | 200 | All stock movements, newest first (optional `?productId=&reason=`) |
 | GET | `/api/orders` | 200 | List all orders (optional `?status=`) |
 | GET | `/api/orders/{id}` | 200 | Get one order with its items |
 | POST | `/api/orders` | 201 | Create an order, optionally with items |
@@ -208,6 +283,7 @@ For nested fields, `field` uses paths like `items[0].quantity`.
 | POST | `/api/orders/{orderId}/items` | 201 | Add an item to a `PENDING` order |
 | PUT | `/api/orders/{orderId}/items/{itemId}` | 200 | Change an item's quantity |
 | DELETE | `/api/orders/{orderId}/items/{itemId}` | 204 | Remove an item from a `PENDING` order |
+| POST | `/api/backup` | 201 | Write a backup zip of the database |
 
 ---
 
@@ -262,6 +338,8 @@ Request:
 }
 ```
 
+If `quantity` is above 0, an `ADJUSTMENT` movement with note `"Initial stock"` is written for it.
+
 - **201**: the created `Product`. The `Location` header is the product's absolute URL, e.g.
   `http://localhost:8080/api/products/6`.
 
@@ -277,34 +355,61 @@ Request:
 
 #### `PUT /api/products/{id}`
 
-Replaces `name`, `sku`, `description`, `price` and `quantity`. All required fields must be sent. Use the
-`/stock` endpoint to change only the stock.
+Replaces `name`, `sku`, `description` and `price`. All required fields must be sent. It **never changes stock**;
+use [`PATCH /api/products/{id}/stock`](#patch-apiproductsidstock) for that, so every change gets a ledger entry.
 
-Request: same body as `POST /api/products`, plus an optional `version`. Send the `version` from the product you
-loaded to make sure you don't overwrite a change someone else made in the meantime:
+`quantity` is optional. Leave it out (recommended), or send the stored value, and it is ignored. A different value
+returns **400**.
+
+Request: same body as `POST /api/products` without `quantity`, plus an optional `version`. Send the `version` from
+the product you loaded to make sure you don't overwrite a change someone else made in the meantime:
 
 ```json
-{ "name": "Webcam", "sku": "CAM-006", "description": "1080p USB webcam", "price": 44.99, "quantity": 25, "version": 0 }
+{ "name": "Webcam", "sku": "CAM-006", "description": "1080p USB webcam", "price": 44.99, "version": 0 }
 ```
 
 - **200**: the updated `Product` (its `version` goes up by 1 if any field changed)
-- **400**: validation failed
+- **400**: validation failed, or `quantity` differs from the stored value:
+
+```json
+{
+  "timestamp": "2026-10-04T08:15:30.123456Z",
+  "status": 400,
+  "error": "Bad Request",
+  "message": "Quantity can't be changed by editing the product (stored 25, sent 30). Use PATCH /api/products/6/stock with a note, or leave quantity out.",
+  "path": "/api/products/6",
+  "fieldErrors": [
+    { "field": "quantity", "message": "Quantity can't be changed by editing the product (stored 25, sent 30). Use PATCH /api/products/6/stock with a note, or leave quantity out." }
+  ]
+}
+```
+
 - **404**: no product with that id
 - **409**: another product already uses that `sku`, or `version` was sent and doesn't match the stored value
   (reload the product and try again)
 
 #### `PATCH /api/products/{id}/stock`
 
-Adds `delta` to the product's `quantity`. Use a positive `delta` to restock and a negative one to remove stock.
+Manual stock adjustment. Adds `delta` to the product's `quantity` and writes an `ADJUSTMENT` movement with the
+note. Use a positive `delta` to add stock and a negative one to remove it.
 
 Request:
 
 ```json
-{ "delta": 25 }
+{ "delta": -2, "note": "Broken in transit" }
 ```
 
+| Field | Rules |
+|---|---|
+| `delta` | Required integer, not `0` |
+| `note` | Required, not blank, max 500 characters. Leading and trailing spaces are trimmed. |
+
 - **200**: the updated `Product`
-- **400**: `delta` missing or not an integer
+- **400**:
+  - `delta` missing (`fieldErrors` field `delta`) or not an integer
+  - `note` missing or blank (`fieldErrors` field `note`, message `"A note is required for manual stock adjustments"`)
+    or longer than 500 characters
+  - `delta` is `0` (message `"delta must not be 0"`, no `fieldErrors`)
 - **404**: no product with that id
 - **409**: the stock would go below 0, e.g.
 
@@ -318,11 +423,87 @@ Request:
 }
 ```
 
+A stale or concurrent change also returns **409** (see [Stock rules](#stock-rules)).
+
 #### `DELETE /api/products/{id}`
+
+Deletes the product and its stock movements.
 
 - **204**: deleted, no body
 - **404**: no product with that id
 - **409**: the product is used by at least one order item, in any order status
+
+---
+
+### Stock movements
+
+Read-only. Both endpoints return a plain JSON array of `StockMovement`, newest first (by `createdAt`, then `id`).
+
+Paging: `page` starts at `0` (default `0`) and `size` must be 1–500 (default `100`). There is no total count. A
+page with fewer than `size` rows is the last one.
+
+#### `GET /api/products/{id}/movements?page=0&size=100`
+
+- **200**: `StockMovement[]` for that product (empty if it has none)
+- **400**: `page` < 0, `size` outside 1–500, or either isn't an integer
+- **404**: no product with that id
+
+#### `GET /api/stock-movements?productId=&reason=&page=0&size=100`
+
+Both filters are optional and can be combined. `reason` is one of `SALE`, `CANCEL`, `RECEIPT`, `PRODUCTION`,
+`ADJUSTMENT`. An unknown `productId` returns an empty array, not 404.
+
+- **200**: `StockMovement[]`
+
+```json
+[
+  { "id": 18, "productId": 3, "productName": "USB-C Hub", "productSku": "HUB-003", "delta": 2, "reason": "CANCEL",
+    "note": "Order #5 cancelled", "orderId": 5, "purchaseOrderId": null, "locationId": null,
+    "createdAt": "2026-10-04T15:40:00.000001" },
+  { "id": 17, "productId": 3, "productName": "USB-C Hub", "productSku": "HUB-003", "delta": -2, "reason": "SALE",
+    "note": "Added to order #5", "orderId": 5, "purchaseOrderId": null, "locationId": null,
+    "createdAt": "2026-10-04T15:30:00.123456" }
+]
+```
+
+- **400**: `reason` isn't a valid `MovementReason`, or `page`/`size` is invalid
+
+---
+
+### Backup
+
+#### `POST /api/backup`
+
+Writes a zip copy of the database with H2's `BACKUP TO`. No request body: the server picks the folder and file
+name. It runs while the app is in use; H2 copies the transaction log too, so the zip is consistent.
+
+- **Folder:** `inventix.backup.dir` in `application.properties`, default `./backups` (relative to the folder the
+  backend was started from). It is created if it doesn't exist.
+- **File name:** `inventix-backup-<yyyyMMdd-HHmmss>.zip` (local time). A second backup in the same second gets
+  `-1`, `-2`, … instead of overwriting the first.
+- **Contents:** `inventix.mv.db`. To restore, see the README ("Backups").
+- Old backups are never deleted by the server.
+
+Responses:
+
+- **201**: `Backup`, e.g.
+
+```json
+{
+  "fileName": "inventix-backup-20261004-153000.zip",
+  "path": "C:\\Users\\me\\inventory-manager\\backups\\inventix-backup-20261004-153000.zip",
+  "sizeBytes": 20480,
+  "createdAt": "2026-10-04T15:30:00.512Z"
+}
+```
+
+- **405**: any method other than `POST`
+- **409**: the database is in memory, so there is nothing to back up (`"The database is in memory, so there is
+  nothing to back up. Use a file database to enable backups."`)
+- **500**: the folder couldn't be created or the backup command failed. `message` starts with `"Backup failed: "`
+  or names the folder.
+
+The desktop app uses a 120-second timeout for this call. Every other call uses 10 seconds.
 
 ---
 
@@ -376,15 +557,11 @@ Request:
   "updatedAt": "2026-10-04T10:20:00.000002",
   "orderItems": [
     {
-      "id": 1, "orderId": 1,
-      "product": { "id": 1, "name": "Wireless Mouse", "sku": "WM-001", "description": "2.4 GHz wireless optical mouse",
-                   "price": 24.99, "quantity": 118, "createdAt": "2026-10-04T10:15:30.123456", "updatedAt": "2026-10-04T10:20:00.000001", "version": 1 },
+      "id": 1, "orderId": 1, "productId": 1, "productName": "Wireless Mouse", "productSku": "WM-001",
       "quantity": 2, "pricePerUnit": 24.99, "subtotal": 49.98
     },
     {
-      "id": 2, "orderId": 1,
-      "product": { "id": 2, "name": "Mechanical Keyboard", "sku": "KB-002", "description": "Tenkeyless keyboard with brown switches",
-                   "price": 89.90, "quantity": 34, "createdAt": "2026-10-04T10:15:30.123456", "updatedAt": "2026-10-04T10:20:00.000001", "version": 1 },
+      "id": 2, "orderId": 1, "productId": 2, "productName": "Mechanical Keyboard", "productSku": "KB-002",
       "quantity": 1, "pricePerUnit": 89.90, "subtotal": 89.90
     }
   ]
@@ -415,7 +592,8 @@ Request:
 { "status": "SHIPPED" }
 ```
 
-- **200**: the updated `Order`. Moving to `CANCELLED` gives the stock back.
+- **200**: the updated `Order`. Moving to `CANCELLED` gives the stock back and writes one `CANCEL` movement per
+  item.
 - **400**: `status` missing or not a valid `OrderStatus`
 - **404**: no order with that id
 - **409**: transition not allowed, e.g.
@@ -432,7 +610,8 @@ Request:
 
 #### `DELETE /api/orders/{id}`
 
-Deletes the order and its items. If the order is `PENDING`, its stock is given back first.
+Deletes the order and its items. If the order is `PENDING`, its stock is given back first, with a `CANCEL`
+movement per item. Those movements keep the deleted order's `orderId`.
 
 - **204**: deleted, no body
 - **404**: no order with that id
@@ -463,9 +642,7 @@ Request:
 
 ```json
 {
-  "id": 3, "orderId": 1,
-  "product": { "id": 3, "name": "USB-C Hub", "sku": "HUB-003", "description": "7-in-1 USB-C hub with HDMI and card reader",
-               "price": 39.50, "quantity": 7, "createdAt": "2026-10-04T10:15:30.123456", "updatedAt": "2026-10-04T10:25:00.000001", "version": 1 },
+  "id": 3, "orderId": 1, "productId": 3, "productName": "USB-C Hub", "productSku": "HUB-003",
   "quantity": 1, "pricePerUnit": 39.50, "subtotal": 39.50
 }
 ```
