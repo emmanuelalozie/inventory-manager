@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <title>Inventix</title>
+    <link rel="stylesheet" href="styles.css" />
+    <script type="module" src="js/main.js"></script>
+  </head>
+  <body>
+    <div class="app">
+      <header class="sidebar">
+        <div class="brand">
+          <span class="brand-mark" aria-hidden="true">IX</span>
+          <span class="brand-name">Inventix</span>
+        </div>
+        <nav class="nav" aria-label="Main">
+          <a class="nav-link" href="#/dashboard" data-view="dashboard">Dashboard</a>
+          <a class="nav-link" href="#/products" data-view="products">Products</a>
+          <a class="nav-link" href="#/orders" data-view="orders">Orders</a>
+          <a class="nav-link" href="#/settings" data-view="settings">Settings</a>
+        </nav>
+        <div class="connection" id="connection-status">
+          <span class="connection-dot" aria-hidden="true"></span>
+          <span class="connection-text">Connecting…</span>
+          <span class="connection-url" id="connection-url"></span>
+        </div>
+      </header>
+
+      <main class="main">
+        <div id="connection-banner" class="banner banner-error" role="alert" hidden>
+          <div class="banner-body">
+            <strong id="connection-banner-title">Backend not reachable</strong>
+            <p id="connection-banner-text"></p>
+          </div>
+          <button type="button" class="button" id="connection-retry">Retry</button>
+        </div>
+
+        <!-- Dashboard -->
+        <section class="view" data-view="dashboard" hidden>
+          <div class="view-header">
+            <h1>Dashboard</h1>
+            <div class="actions">
+              <button type="button" class="button" id="dashboard-refresh">Refresh</button>
+            </div>
+          </div>
+          <div class="stats" id="dashboard-stats"></div>
+          <div class="grid-2">
+            <div class="card">
+              <div class="card-header">
+                <h2>Low stock</h2>
+                <a class="muted" href="#/settings" id="dashboard-threshold-label" title="Change the threshold in Settings"></a>
+              </div>
+              <div id="dashboard-low-stock"></div>
+            </div>
+            <div class="card">
+              <div class="card-header"><h2>Orders by status</h2></div>
+              <div id="dashboard-order-status"></div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-header">
+              <h2>Recent orders</h2>
+              <a class="muted" href="#/orders">All orders →</a>
+            </div>
+            <div id="dashboard-recent-orders"></div>
+          </div>
+        </section>
+
+        <!-- Products -->
+        <section class="view" data-view="products" hidden>
+          <div class="view-header">
+            <div>
+              <h1>Products</h1>
+              <p class="muted" id="products-count"></p>
+            </div>
+            <div class="actions">
+              <input
+                type="search"
+                id="products-search"
+                class="search"
+                placeholder="Search name, SKU or description"
+                aria-label="Search products"
+              />
+              <button type="button" class="button" id="products-refresh">Refresh</button>
+              <button type="button" class="button button-primary" id="products-new">New product</button>
+            </div>
+          </div>
+          <div class="card card-flush">
+            <div id="products-table"></div>
+          </div>
+        </section>
+
+        <!-- Orders -->
+        <section class="view" data-view="orders" hidden>
+          <div id="orders-list-panel">
+            <div class="view-header">
+              <div>
+                <h1>Orders</h1>
+                <p class="muted" id="orders-count"></p>
+              </div>
+              <div class="actions">
+                <select id="orders-status-filter" aria-label="Filter by status"></select>
+                <button type="button" class="button" id="orders-refresh">Refresh</button>
+                <button type="button" class="button button-primary" id="orders-new">New order</button>
+              </div>
+            </div>
+            <div class="card card-flush">
+              <div id="orders-table"></div>
+            </div>
+          </div>
+          <div id="order-detail-panel" hidden></div>
+        </section>
+
+        <!-- Settings -->
+        <section class="view" data-view="settings" hidden>
+          <div class="view-header">
+            <h1>Settings</h1>
+          </div>
+          <div class="card settings-card">
+            <form id="settings-form" novalidate>
+              <div class="form-error" role="alert" hidden></div>
+              <label class="field">
+                <span class="field-label">Backend URL</span>
+                <input name="baseUrl" type="url" required autocomplete="off" spellcheck="false" />
+                <span class="field-error" data-error-for="baseUrl"></span>
+                <span class="hint">Default: <code id="settings-default-url"></code>. Start the backend with <code>.\gradlew.bat bootRun</code>.</span>
+              </label>
+              <label class="field">
+                <span class="field-label">Low-stock threshold</span>
+                <input name="threshold" type="number" min="0" step="1" required />
+                <span class="field-error" data-error-for="threshold"></span>
+                <span class="hint">Products with this many units or fewer count as low stock.</span>
+              </label>
+              <div class="form-actions">
+                <button type="submit" class="button button-primary">Save</button>
+                <button type="button" class="button" id="settings-test">Test connection</button>
+                <button type="button" class="button" id="settings-reset">Reset to defaults</button>
+              </div>
+            </form>
+            <dl class="info-list">
+              <dt>Running in</dt>
+              <dd id="settings-environment"></dd>
+              <dt>Page origin</dt>
+              <dd><code id="settings-origin"></code></dd>
+            </dl>
+            <p class="hint">
+              The backend only accepts requests from the origins listed in <code>WebConfig.java</code>
+              (Tauri, <code>localhost:1420</code> and <code>localhost:5500</code>). If the page origin above isn't one
+              of them, requests fail as if the backend were down.
+            </p>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <div id="toasts" class="toasts" aria-live="polite"></div>
+  </body>
+</html>

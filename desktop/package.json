@@ -1,0 +1,16 @@
+{
+  "name": "inventix-desktop",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Inventix desktop client (Tauri 2 + plain HTML/CSS/JS)",
+  "scripts": {
+    "tauri": "tauri",
+    "serve": "node scripts/dev-server.js",
+    "dev": "tauri dev",
+    "build": "tauri build",
+    "test": "node --test scripts/dev-server.test.js"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2"
+  }
+}
