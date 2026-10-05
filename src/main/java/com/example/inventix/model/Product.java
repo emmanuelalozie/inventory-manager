@@ -1,7 +1,5 @@
 package com.example.inventix.model;
 
-import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
-import com.fasterxml.jackson.annotation.JsonProperty;
 import jakarta.persistence.*;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
@@ -21,12 +19,10 @@ import java.time.LocalDateTime;
 @Setter
 @ToString
 @NoArgsConstructor
-@JsonIgnoreProperties({"hibernateLazyInitializer", "handler"})
 public class Product {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    @JsonProperty(access = JsonProperty.Access.READ_ONLY)
     private Long id;
 
     @NotBlank(message = "Name is required")
@@ -54,15 +50,14 @@ public class Product {
     private Integer quantity;
 
     @Column(name = "created_at", updatable = false)
-    @JsonProperty(access = JsonProperty.Access.READ_ONLY)
     private LocalDateTime createdAt;
 
     @Column(name = "updated_at")
-    @JsonProperty(access = JsonProperty.Access.READ_ONLY)
     private LocalDateTime updatedAt;
 
     // Optimistic lock: concurrent stock changes to the same product fail with 409 instead of overselling.
-    // Clients may send back the version they read with PUT; a stale value is rejected (see ProductServiceImpl).
+    // Clients may send back the version they read with PUT (ProductRequest); a stale value is rejected
+    // (see ProductServiceImpl).
     @Version
     private Long version;
 

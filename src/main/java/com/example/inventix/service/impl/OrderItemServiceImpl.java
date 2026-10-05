@@ -3,6 +3,7 @@ package com.example.inventix.service.impl;
 import com.example.inventix.exception.InvalidOrderStateException;
 import com.example.inventix.exception.OrderItemNotFoundException;
 import com.example.inventix.exception.OrderNotFoundException;
+import com.example.inventix.model.MovementReason;
 import com.example.inventix.model.Order;
 import com.example.inventix.model.OrderItem;
 import com.example.inventix.model.OrderStatus;
@@ -46,7 +47,8 @@ public class OrderItemServiceImpl implements OrderItemService {
         requirePositiveQuantity(orderItem.getQuantity());
 
         // Reserve the stock; throws InsufficientStockException if there isn't enough.
-        Product product = productService.adjustStock(orderItem.getProduct().getId(), -orderItem.getQuantity());
+        Product product = productService.adjustStock(orderItem.getProduct().getId(), -orderItem.getQuantity(),
+                MovementReason.SALE, "Added to order #" + orderId, orderId);
 
         orderItem.setId(null);
         orderItem.setProduct(product);
@@ -64,10 +66,14 @@ public class OrderItemServiceImpl implements OrderItemService {
         ensureEditable(order);
         requirePositiveQuantity(updatedItem.getQuantity());
 
-        // Positive delta returns stock to the product, negative delta takes more.
+        // Positive delta returns stock to the product (CANCEL), negative delta takes more (SALE).
         int delta = existingItem.getQuantity() - updatedItem.getQuantity();
         if (delta != 0) {
-            productService.adjustStock(existingItem.getProduct().getId(), delta);
+            productService.adjustStock(existingItem.getProduct().getId(), delta,
+                    delta > 0 ? MovementReason.CANCEL : MovementReason.SALE,
+                    "Order #" + order.getId() + ": quantity changed from " + existingItem.getQuantity()
+                            + " to " + updatedItem.getQuantity(),
+                    order.getId());
         }
 
         // The unit price stays as it was when the item was added to the order.
@@ -85,7 +91,8 @@ public class OrderItemServiceImpl implements OrderItemService {
         ensureEditable(order);
 
         // Restore product stock
-        productService.adjustStock(orderItem.getProduct().getId(), orderItem.getQuantity());
+        productService.adjustStock(orderItem.getProduct().getId(), orderItem.getQuantity(),
+                MovementReason.CANCEL, "Removed from order #" + order.getId(), order.getId());
 
         // Unlink the item (this also recalculates the order total), then delete it explicitly:
         // orphan removal misses items that were added in the same session and not flushed yet.

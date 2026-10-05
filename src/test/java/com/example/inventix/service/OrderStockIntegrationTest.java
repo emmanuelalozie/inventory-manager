@@ -4,16 +4,20 @@ import com.example.inventix.dto.OrderItemRequest;
 import com.example.inventix.exception.InsufficientStockException;
 import com.example.inventix.exception.InvalidOrderStateException;
 import com.example.inventix.exception.ProductInUseException;
+import com.example.inventix.model.MovementReason;
 import com.example.inventix.model.Order;
 import com.example.inventix.model.OrderItem;
 import com.example.inventix.model.OrderStatus;
 import com.example.inventix.model.Product;
+import com.example.inventix.model.StockMovement;
 import com.example.inventix.repository.OrderItemRepository;
 import com.example.inventix.repository.OrderRepository;
 import com.example.inventix.repository.ProductRepository;
+import com.example.inventix.repository.StockMovementRepository;
 import com.example.inventix.service.impl.OrderItemServiceImpl;
 import com.example.inventix.service.impl.OrderServiceImpl;
 import com.example.inventix.service.impl.ProductServiceImpl;
+import org.assertj.core.groups.Tuple;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -26,6 +30,7 @@ import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.tuple;
 
 /**
  * Runs the real services against H2 to check that stock is reserved and given back,
@@ -60,10 +65,31 @@ class OrderStockIntegrationTest {
     private Long keyboardId; // 25.00 each, 10 in stock
     private Long cableId;    // 4.50 each, 5 in stock
 
+    @Autowired
+    private StockMovementRepository stockMovementRepository;
+
+    // Created through the service, so each product's starting stock is in the ledger too.
     @BeforeEach
     void setUp() {
-        keyboardId = productRepository.save(product("Keyboard", "KB-1", "25.00", 10)).getId();
-        cableId = productRepository.save(product("Cable", "CB-1", "4.50", 5)).getId();
+        keyboardId = productService.createProduct(product("Keyboard", "KB-1", "25.00", 10)).getId();
+        cableId = productService.createProduct(product("Cable", "CB-1", "4.50", 5)).getId();
+    }
+
+    // The ledger is complete: each product's movements add up to its stored quantity.
+    private void assertLedgerMatchesStock() {
+        flushAndClear();
+        for (Long productId : List.of(keyboardId, cableId)) {
+            assertThat(stockMovementRepository.sumDeltaByProductId(productId))
+                    .as("sum of movements for product %d", productId)
+                    .isEqualTo(stockOf(productId));
+        }
+    }
+
+    // Movements caused by an order, as (product, delta, reason) tuples.
+    private List<Tuple> orderMovements(Long orderId) {
+        return stockMovementRepository.findByOrderId(orderId).stream()
+                .map(movement -> tuple(movement.getProduct().getId(), movement.getDelta(), movement.getReason()))
+                .toList();
     }
 
     private static Product product(String name, String sku, String price, int quantity) {
@@ -255,6 +281,153 @@ class OrderStockIntegrationTest {
         assertThatThrownBy(() -> orderItemService.createOrderItem(orderId, item(cableId, 1)))
                 .isInstanceOf(InvalidOrderStateException.class);
         assertThat(stockOf(cableId)).isEqualTo(3);
+    }
+
+    @Test
+    void creatingProducts_recordsInitialStock() {
+        flushAndClear();
+        List<StockMovement> movements = stockMovementRepository.findAll();
+
+        assertThat(movements)
+                .extracting(movement -> movement.getProduct().getId(), StockMovement::getDelta,
+                        StockMovement::getReason, StockMovement::getNote)
+                .containsExactlyInAnyOrder(
+                        tuple(keyboardId, 10, MovementReason.ADJUSTMENT, "Initial stock"),
+                        tuple(cableId, 5, MovementReason.ADJUSTMENT, "Initial stock"));
+        assertLedgerMatchesStock();
+    }
+
+    @Test
+    void addingItems_recordsSaleMovementsForTheOrder() {
+        Long orderId = createOrderWithKeyboardsAndCables();
+
+        assertThat(orderMovements(orderId)).containsExactlyInAnyOrder(
+                tuple(keyboardId, -3, MovementReason.SALE),
+                tuple(cableId, -2, MovementReason.SALE));
+        assertLedgerMatchesStock();
+    }
+
+    @Test
+    void changingItemQuantity_recordsTheDifference() {
+        Long orderId = createOrderWithKeyboardsAndCables();
+        Long keyboardItemId = reload(orderId).getOrderItems().stream()
+                .filter(orderItem -> orderItem.getProduct().getId().equals(keyboardId))
+                .findFirst().orElseThrow()
+                .getId();
+        OrderItem more = new OrderItem();
+        more.setQuantity(5);
+        OrderItem fewer = new OrderItem();
+        fewer.setQuantity(1);
+
+        orderItemService.updateOrderItem(keyboardItemId, more);   // 3 -> 5: two more sold
+        orderItemService.updateOrderItem(keyboardItemId, fewer);  // 5 -> 1: four given back
+
+        assertThat(orderMovements(orderId)).containsExactlyInAnyOrder(
+                tuple(keyboardId, -3, MovementReason.SALE),
+                tuple(cableId, -2, MovementReason.SALE),
+                tuple(keyboardId, -2, MovementReason.SALE),
+                tuple(keyboardId, 4, MovementReason.CANCEL));
+        assertLedgerMatchesStock();
+        assertThat(stockOf(keyboardId)).isEqualTo(9);
+    }
+
+    @Test
+    void removingItem_recordsCancelMovement() {
+        Long orderId = createOrderWithKeyboardsAndCables();
+        Long cableItemId = reload(orderId).getOrderItems().stream()
+                .filter(orderItem -> orderItem.getProduct().getId().equals(cableId))
+                .findFirst().orElseThrow()
+                .getId();
+
+        orderItemService.deleteOrderItem(cableItemId);
+
+        assertThat(orderMovements(orderId)).contains(tuple(cableId, 2, MovementReason.CANCEL));
+        assertLedgerMatchesStock();
+    }
+
+    @Test
+    void cancellingOrder_recordsCancelMovementPerItem() {
+        Long orderId = createOrderWithKeyboardsAndCables();
+
+        orderService.updateOrderStatus(orderId, OrderStatus.CANCELLED);
+
+        assertThat(orderMovements(orderId)).containsExactlyInAnyOrder(
+                tuple(keyboardId, -3, MovementReason.SALE),
+                tuple(cableId, -2, MovementReason.SALE),
+                tuple(keyboardId, 3, MovementReason.CANCEL),
+                tuple(cableId, 2, MovementReason.CANCEL));
+        assertThat(stockMovementRepository.findByOrderId(orderId))
+                .filteredOn(movement -> movement.getReason() == MovementReason.CANCEL)
+                .extracting(StockMovement::getNote)
+                .containsOnly("Order #" + orderId + " cancelled");
+        assertLedgerMatchesStock();
+
+        // Deleting the cancelled order gives nothing back, so it writes nothing.
+        orderService.deleteOrder(orderId);
+        assertThat(orderMovements(orderId)).hasSize(4);
+        assertLedgerMatchesStock();
+    }
+
+    @Test
+    void deletingPendingOrder_recordsCancelMovements_thatKeepTheOrderId() {
+        Long orderId = createOrderWithKeyboardsAndCables();
+
+        orderService.deleteOrder(orderId);
+        flushAndClear();
+
+        assertThat(orderRepository.existsById(orderId)).isFalse();
+        assertThat(orderMovements(orderId)).containsExactlyInAnyOrder(
+                tuple(keyboardId, -3, MovementReason.SALE),
+                tuple(cableId, -2, MovementReason.SALE),
+                tuple(keyboardId, 3, MovementReason.CANCEL),
+                tuple(cableId, 2, MovementReason.CANCEL));
+        assertLedgerMatchesStock();
+    }
+
+    @Test
+    void failedStockChange_writesNoMovement() {
+        Long orderId = orderService.createOrder(new Order()).getId();
+        long before = stockMovementRepository.count();
+
+        assertThatThrownBy(() -> orderItemService.createOrderItem(orderId, item(cableId, 6)))
+                .isInstanceOf(InsufficientStockException.class);
+
+        assertThat(stockMovementRepository.count()).isEqualTo(before);
+        assertLedgerMatchesStock();
+    }
+
+    @Test
+    void ledgerMatchesStock_afterAMixOfOrdersAndManualAdjustments() {
+        Long first = createOrderWithKeyboardsAndCables();
+        Long second = orderService.createOrderWithItems(new Order(), List.of(item(keyboardId, 2))).getId();
+        productService.adjustStock(cableId, 20, MovementReason.ADJUSTMENT, "Delivery counted in", null);
+        productService.adjustStock(keyboardId, -1, MovementReason.ADJUSTMENT, "Damaged", null);
+        Order changes = new Order();
+        changes.setOrderItems(List.of(item(cableId, 7)));
+        orderService.updateOrder(first, changes);
+        orderService.updateOrderStatus(second, OrderStatus.CANCELLED);
+        Long third = orderService.createOrderWithItems(new Order(), List.of(item(keyboardId, 4))).getId();
+        orderService.updateOrderStatus(third, OrderStatus.SHIPPED);
+        flushAndClear();
+
+        assertThat(stockOf(keyboardId)).isEqualTo(5);  // 10 - 1 damaged - 4 shipped
+        assertThat(stockOf(cableId)).isEqualTo(18);    // 5 + 20 - 7
+        assertLedgerMatchesStock();
+    }
+
+    @Test
+    void deletingUnusedProduct_removesItsMovements() {
+        productService.adjustStock(cableId, 3, MovementReason.ADJUSTMENT, "Recount", null);
+        flushAndClear();
+
+        productService.deleteProduct(cableId);
+        flushAndClear();
+
+        assertThat(productRepository.existsById(cableId)).isFalse();
+        assertThat(stockMovementRepository.sumDeltaByProductId(cableId)).isZero();
+        assertThat(stockMovementRepository.findAll())
+                .extracting(movement -> movement.getProduct().getId())
+                .containsOnly(keyboardId);
     }
 
     @Test

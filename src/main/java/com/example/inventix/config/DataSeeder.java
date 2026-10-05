@@ -2,6 +2,7 @@ package com.example.inventix.config;
 
 import com.example.inventix.model.Product;
 import com.example.inventix.repository.ProductRepository;
+import com.example.inventix.service.ProductService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -13,7 +14,7 @@ import java.math.BigDecimal;
 import java.util.List;
 
 /**
- * Adds a few sample products to an empty database so the UI has something to show.
+ * Adds a few sample products on the first start (no products in the database) so the UI has something to show.
  * Turn it off with inventix.seed-data=false.
  */
 @Component
@@ -23,15 +24,20 @@ public class DataSeeder implements CommandLineRunner {
     private static final Logger log = LoggerFactory.getLogger(DataSeeder.class);
 
     private final ProductRepository productRepository;
+    private final ProductService productService;
 
     @Autowired
-    public DataSeeder(ProductRepository productRepository) {
+    public DataSeeder(ProductRepository productRepository, ProductService productService) {
         this.productRepository = productRepository;
+        this.productService = productService;
     }
 
     @Override
     public void run(String... args) {
-        if (productRepository.count() > 0) {
+        // The database is a file now, so this runs on every start: only the first start (no products) seeds.
+        long existing = productRepository.count();
+        if (existing > 0) {
+            log.debug("Skipping sample data: {} products already exist", existing);
             return;
         }
         List<Product> products = List.of(
@@ -41,7 +47,8 @@ public class DataSeeder implements CommandLineRunner {
                 product("27\" Monitor", "MON-004", "27 inch 1440p IPS monitor", "279.00", 4),
                 product("Laptop Stand", "LS-005", "Adjustable aluminium laptop stand", "29.99", 0)
         );
-        productRepository.saveAll(products);
+        // Through the service, so each product's starting stock is recorded in the stock ledger.
+        products.forEach(productService::createProduct);
         log.info("Seeded {} sample products", products.size());
     }
 

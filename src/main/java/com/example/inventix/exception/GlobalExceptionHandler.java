@@ -42,10 +42,17 @@ public class GlobalExceptionHandler {
             InsufficientStockException.class,
             InvalidOrderStateException.class,
             DuplicateSkuException.class,
-            ProductInUseException.class
+            ProductInUseException.class,
+            BackupNotAvailableException.class
     })
     public ResponseEntity<ApiError> handleConflict(RuntimeException ex, HttpServletRequest request) {
         return build(HttpStatus.CONFLICT, ex.getMessage(), request, null);
+    }
+
+    @ExceptionHandler(BackupFailedException.class)
+    public ResponseEntity<ApiError> handleBackupFailed(BackupFailedException ex, HttpServletRequest request) {
+        log.error("Backup failed", ex);
+        return build(HttpStatus.INTERNAL_SERVER_ERROR, ex.getMessage(), request, null);
     }
 
     @ExceptionHandler(DataIntegrityViolationException.class)
@@ -78,6 +85,13 @@ public class GlobalExceptionHandler {
                         violation.getPropertyPath().toString(), violation.getMessage()))
                 .toList();
         return build(HttpStatus.BAD_REQUEST, "Validation failed", request, fieldErrors);
+    }
+
+    @ExceptionHandler(QuantityChangeNotAllowedException.class)
+    public ResponseEntity<ApiError> handleQuantityChange(QuantityChangeNotAllowedException ex,
+                                                         HttpServletRequest request) {
+        return build(HttpStatus.BAD_REQUEST, ex.getMessage(), request,
+                List.of(new ApiError.FieldErrorDetail("quantity", ex.getMessage())));
     }
 
     @ExceptionHandler(IllegalArgumentException.class)
