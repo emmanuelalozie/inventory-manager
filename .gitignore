@@ -45,8 +45,15 @@ desktop/src-tauri/target/
 *.log
 *.mv.db
 *.trace.db
+*.lock.db
+*.temp.db
+# H2 file database and backups written by the running app
+/data/
+/backups/
 .env
 .env.*
 Thumbs.db
 desktop.ini
 .DS_Store
+# Local agent notes and scripts
+/.orchestrator/

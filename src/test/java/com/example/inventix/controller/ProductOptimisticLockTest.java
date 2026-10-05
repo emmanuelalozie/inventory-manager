@@ -92,11 +92,12 @@ class ProductOptimisticLockTest {
 
     @Test
     void jpaOptimisticLockExceptionReturns409() throws Exception {
-        when(productService.adjustStock(eq(1L), anyInt())).thenThrow(new OptimisticLockException("stale"));
+        when(productService.adjustStock(eq(1L), anyInt(), any(), any(), any()))
+                .thenThrow(new OptimisticLockException("stale"));
 
         mockMvc.perform(patch("/api/products/1/stock")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"delta\":-1}"))
+                        .content("{\"delta\":-1,\"note\":\"Recount\"}"))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.message").value(containsString("changed by another request")));
     }

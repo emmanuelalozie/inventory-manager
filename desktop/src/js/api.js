@@ -20,10 +20,10 @@ export class ApiError extends Error {
 
 /** The request never got a response: backend down, wrong URL, blocked by CORS/CSP, or timed out. */
 export class NetworkError extends Error {
-  constructor(baseUrl, cause, timedOut = false) {
+  constructor(baseUrl, cause, timedOut = false, timeoutMs = REQUEST_TIMEOUT_MS) {
     super(
       timedOut
-        ? `Backend at ${baseUrl} did not respond within ${REQUEST_TIMEOUT_MS / 1000} seconds`
+        ? `Backend at ${baseUrl} did not respond within ${timeoutMs / 1000} seconds`
         : `Backend not reachable at ${baseUrl}`
     );
     this.name = "NetworkError";
@@ -106,7 +106,7 @@ function notifyBaseUrlChange(url) {
 // Core request
 // ---------------------------------------------------------------------------
 
-async function request(path, { method = "GET", body } = {}) {
+async function request(path, { method = "GET", body, timeoutMs = REQUEST_TIMEOUT_MS } = {}) {
   const baseUrl = getBaseUrl();
   const headers = { Accept: "application/json" };
   const init = { method, headers };
@@ -120,14 +120,14 @@ async function request(path, { method = "GET", body } = {}) {
   const timer = setTimeout(() => {
     timedOut = true;
     controller.abort();
-  }, REQUEST_TIMEOUT_MS);
+  }, timeoutMs);
   init.signal = controller.signal;
 
   let response;
   try {
     response = await fetch(baseUrl + path, init);
   } catch (cause) {
-    const error = new NetworkError(baseUrl, cause, timedOut);
+    const error = new NetworkError(baseUrl, cause, timedOut, timeoutMs);
     notifyConnection(false, error);
     throw error;
   } finally {
@@ -158,6 +158,22 @@ async function request(path, { method = "GET", body } = {}) {
 
 const id = (value) => encodeURIComponent(String(value));
 
+/** "?a=1&b=2" from the params that are set, or "" when none are. */
+function query(params) {
+  const search = new URLSearchParams();
+  Object.entries(params).forEach(([key, value]) => {
+    if (value !== undefined && value !== null && value !== "") search.set(key, String(value));
+  });
+  const text = search.toString();
+  return text ? `?${text}` : "";
+}
+
+// A backup copies the whole database file, which can take longer than a normal request.
+const BACKUP_TIMEOUT_MS = 120000;
+
+/** Page size for the movement endpoints (the backend allows 1–500). */
+export const MOVEMENTS_PAGE_SIZE = 50;
+
 // ---------------------------------------------------------------------------
 // Endpoints
 // ---------------------------------------------------------------------------
@@ -167,15 +183,32 @@ export const productsApi = {
   lowStock: (threshold = 10) =>
     request(`/api/products/low-stock?threshold=${encodeURIComponent(threshold)}`),
   get: (productId) => request(`/api/products/${id(productId)}`),
-  /** product: { name, sku, description, price, quantity } */
+  /** product: { name, sku, description, price, quantity }. A quantity above 0 is recorded as "Initial stock". */
   create: (product) => request("/api/products", { method: "POST", body: product }),
-  /** product: same as create, plus optional `version` (from the loaded product) to detect concurrent edits. */
+  /**
+   * product: { name, sku, description, price } plus optional `version` (from the loaded product) to detect
+   * concurrent edits. Leave quantity out: the backend rejects a changed quantity here (use adjustStock).
+   */
   update: (productId, product) =>
     request(`/api/products/${id(productId)}`, { method: "PUT", body: product }),
-  /** delta > 0 restocks, delta < 0 removes stock. */
-  adjustStock: (productId, delta) =>
-    request(`/api/products/${id(productId)}/stock`, { method: "PATCH", body: { delta } }),
+  /** delta > 0 restocks, delta < 0 removes stock. The note is required and ends up in the stock ledger. */
+  adjustStock: (productId, delta, note) =>
+    request(`/api/products/${id(productId)}/stock`, { method: "PATCH", body: { delta, note } }),
+  /** Stock movements for one product, newest first. page is 0-based. */
+  movements: (productId, { page = 0, size = MOVEMENTS_PAGE_SIZE } = {}) =>
+    request(`/api/products/${id(productId)}/movements${query({ page, size })}`),
   remove: (productId) => request(`/api/products/${id(productId)}`, { method: "DELETE" }),
+};
+
+export const stockMovementsApi = {
+  /** All movements, newest first. productId and reason (SALE, CANCEL, ...) are optional filters. */
+  list: ({ productId, reason, page = 0, size = MOVEMENTS_PAGE_SIZE } = {}) =>
+    request(`/api/stock-movements${query({ productId, reason, page, size })}`),
+};
+
+export const backupApi = {
+  /** Writes a backup zip on the backend machine. Resolves with { fileName, path, sizeBytes, createdAt }. */
+  create: () => request("/api/backup", { method: "POST", timeoutMs: BACKUP_TIMEOUT_MS }),
 };
 
 export const ORDER_STATUSES = ["PENDING", "SHIPPED", "DELIVERED", "CANCELLED"];

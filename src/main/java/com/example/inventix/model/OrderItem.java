@@ -1,7 +1,5 @@
 package com.example.inventix.model;
 
-import com.fasterxml.jackson.annotation.JsonBackReference;
-import com.fasterxml.jackson.annotation.JsonProperty;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
@@ -23,10 +21,8 @@ public class OrderItem {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    // Back-reference: left out of the JSON to avoid an Order -> OrderItem -> Order loop.
     @ManyToOne
     @JoinColumn(name = "order_id")
-    @JsonBackReference
     @ToString.Exclude
     private Order order;
 
@@ -43,9 +39,8 @@ public class OrderItem {
     private BigDecimal subtotal;
 
     /**
-     * Exposes the owning order's id in the JSON without serializing the whole order.
+     * The owning order's id, or null if the item isn't attached to an order.
      */
-    @JsonProperty("orderId")
     public Long getOrderId() {
         return order != null ? order.getId() : null;
     }

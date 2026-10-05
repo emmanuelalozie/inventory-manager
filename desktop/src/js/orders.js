@@ -338,10 +338,12 @@ function renderDetail() {
     })
     .join("");
 
+  // Items only carry the product's id, name and SKU; the current stock comes from the product list.
+  const stockById = new Map(pickerProducts.map((p) => [String(p.id), Number(p.quantity)]));
   const itemRows = items
     .map((item) => {
-      const product = item.product || {};
-      const maxQuantity = Number(item.quantity) + Math.max(0, Number(product.quantity) || 0);
+      const stock = stockById.get(String(item.productId));
+      const maxQuantity = Number(item.quantity) + Math.max(0, stock || 0);
       const quantityCell = editable
         ? `<form class="inline-qty" data-form="item-qty" data-item-id="${escapeHtml(item.id)}" novalidate>
              <input name="quantity" type="number" min="1" max="${escapeHtml(maxQuantity)}" step="1" value="${escapeHtml(item.quantity)}" aria-label="Quantity">
@@ -351,7 +353,7 @@ function renderDetail() {
         : escapeHtml(item.quantity);
       return `
         <tr>
-          <td><div class="cell-title">${escapeHtml(product.name)}</div><div class="cell-sub">${escapeHtml(product.sku)}</div></td>
+          <td><div class="cell-title">${escapeHtml(item.productName)}</div><div class="cell-sub">${escapeHtml(item.productSku)}</div></td>
           <td class="num">${formatMoney(item.pricePerUnit)}</td>
           <td class="num">${quantityCell}</td>
           <td class="num">${formatMoney(item.subtotal)}</td>
@@ -512,7 +514,7 @@ async function updateItemQuantity(form) {
   submit.disabled = true;
   try {
     await ordersApi.updateItem(order.id, item.id, quantity);
-    toast(`Updated ${item.product ? item.product.name : "item"} to ${quantity}`, { type: "success" });
+    toast(`Updated ${item.productName || "item"} to ${quantity}`, { type: "success" });
     await loadOrderDetail(order.id, { quiet: true });
   } catch (error) {
     submit.disabled = false;
@@ -524,7 +526,7 @@ async function updateItemQuantity(form) {
 async function removeItem(order, itemId) {
   const item = (order.orderItems || []).find((i) => String(i.id) === itemId);
   if (!item) return;
-  const name = item.product ? item.product.name : `item ${item.id}`;
+  const name = item.productName || `item ${item.id}`;
   const confirmed = await confirmDialog({
     title: "Remove item",
     message: `Remove ${item.quantity} × ${name} from order #${order.id}? The stock goes back into inventory.`,

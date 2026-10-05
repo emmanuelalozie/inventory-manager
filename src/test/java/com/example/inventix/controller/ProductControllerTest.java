@@ -5,6 +5,8 @@ import com.example.inventix.exception.DuplicateSkuException;
 import com.example.inventix.exception.InsufficientStockException;
 import com.example.inventix.exception.ProductInUseException;
 import com.example.inventix.exception.ProductNotFoundException;
+import com.example.inventix.exception.QuantityChangeNotAllowedException;
+import com.example.inventix.model.MovementReason;
 import com.example.inventix.model.Product;
 import com.example.inventix.service.ProductService;
 import org.junit.jupiter.api.Test;
@@ -26,6 +28,7 @@ import static org.hamcrest.Matchers.hasItems;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
@@ -140,6 +143,34 @@ class ProductControllerTest {
     }
 
     @Test
+    void createProduct_ignoresServerManagedFieldsInBody() throws Exception {
+        when(productService.createProduct(any(Product.class))).thenReturn(sampleProduct());
+
+        mockMvc.perform(post("/api/products")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"id\":42,\"createdAt\":\"2020-01-01T00:00:00\"," + VALID_PRODUCT_JSON.substring(1)))
+                .andExpect(status().isCreated());
+
+        verify(productService).createProduct(argThat(product -> product.getId() == null
+                && product.getCreatedAt() == null
+                && "SKU12345".equals(product.getSku())));
+    }
+
+    @Test
+    void getProductById_returnsOnlyDtoFields() throws Exception {
+        Product product = sampleProduct();
+        product.setVersion(2L);
+        when(productService.getProductById(1L)).thenReturn(product);
+
+        mockMvc.perform(get("/api/products/{id}", 1L))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.version").value(2))
+                .andExpect(jsonPath("$.price").value(99.99))
+                .andExpect(jsonPath("$.quantity").value(100))
+                .andExpect(jsonPath("$.hibernateLazyInitializer").doesNotExist());
+    }
+
+    @Test
     void createProduct_returns400WithFieldErrors_whenBodyIsInvalid() throws Exception {
         mockMvc.perform(post("/api/products")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -210,26 +241,68 @@ class ProductControllerTest {
     }
 
     @Test
-    void adjustStock_returnsProductWithNewQuantity() throws Exception {
+    void createProduct_returns400_whenQuantityIsMissing() throws Exception {
+        mockMvc.perform(post("/api/products")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"Widget\",\"sku\":\"W-1\",\"price\":1.00}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.fieldErrors[0].field").value("quantity"))
+                .andExpect(jsonPath("$.fieldErrors[0].message").value("Quantity is required"));
+
+        verify(productService, never()).createProduct(any(Product.class));
+    }
+
+    @Test
+    void updateProduct_acceptsBodyWithoutQuantity() throws Exception {
+        when(productService.updateProduct(eq(1L), any(Product.class))).thenReturn(sampleProduct());
+
+        mockMvc.perform(put("/api/products/{id}", 1L)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"Sample Product\",\"sku\":\"SKU12345\",\"price\":99.99}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.quantity").value(100));
+
+        verify(productService).updateProduct(eq(1L), argThat(product -> product.getQuantity() == null));
+    }
+
+    @Test
+    void updateProduct_returns400WithQuantityFieldError_whenQuantityWouldChange() throws Exception {
+        when(productService.updateProduct(eq(1L), any(Product.class)))
+                .thenThrow(new QuantityChangeNotAllowedException("Quantity can't be changed by editing the product"));
+
+        mockMvc.perform(put("/api/products/{id}", 1L)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(VALID_PRODUCT_JSON.replace("\"quantity\":100", "\"quantity\":7")))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value(containsString("Quantity can't be changed")))
+                .andExpect(jsonPath("$.fieldErrors[0].field").value("quantity"));
+    }
+
+    @Test
+    void adjustStock_recordsManualAdjustmentWithNote_andReturnsProduct() throws Exception {
         Product adjusted = sampleProduct();
         adjusted.setQuantity(95);
-        when(productService.adjustStock(1L, -5)).thenReturn(adjusted);
+        when(productService.adjustStock(1L, -5, MovementReason.ADJUSTMENT, "Damaged in storage", null))
+                .thenReturn(adjusted);
 
         mockMvc.perform(patch("/api/products/{id}/stock", 1L)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"delta\":-5}"))
+                        .content("{\"delta\":-5,\"note\":\"Damaged in storage\"}"))
                 .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(1))
                 .andExpect(jsonPath("$.quantity").value(95));
+
+        verify(productService).adjustStock(1L, -5, MovementReason.ADJUSTMENT, "Damaged in storage", null);
     }
 
     @Test
     void adjustStock_returns409_whenStockWouldGoNegative() throws Exception {
-        when(productService.adjustStock(1L, -500))
+        when(productService.adjustStock(eq(1L), eq(-500), any(), any(), any()))
                 .thenThrow(new InsufficientStockException("Not enough stock for product 'Sample Product'"));
 
         mockMvc.perform(patch("/api/products/{id}/stock", 1L)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"delta\":-500}"))
+                        .content("{\"delta\":-500,\"note\":\"Write-off\"}"))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.status").value(409));
     }
@@ -238,11 +311,56 @@ class ProductControllerTest {
     void adjustStock_returns400_whenDeltaIsMissing() throws Exception {
         mockMvc.perform(patch("/api/products/{id}/stock", 1L)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{}"))
+                        .content("{\"note\":\"Recount\"}"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.fieldErrors[0].field").value("delta"));
 
-        verify(productService, never()).adjustStock(anyLong(), anyInt());
+        verify(productService, never()).adjustStock(anyLong(), anyInt(), any(), any(), any());
+    }
+
+    @Test
+    void adjustStock_returns400_whenNoteIsMissing() throws Exception {
+        mockMvc.perform(patch("/api/products/{id}/stock", 1L)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"delta\":5}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("Validation failed"))
+                .andExpect(jsonPath("$.fieldErrors[0].field").value("note"))
+                .andExpect(jsonPath("$.fieldErrors[0].message").value("A note is required for manual stock adjustments"));
+
+        verify(productService, never()).adjustStock(anyLong(), anyInt(), any(), any(), any());
+    }
+
+    @Test
+    void adjustStock_returns400_whenNoteIsBlank() throws Exception {
+        mockMvc.perform(patch("/api/products/{id}/stock", 1L)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"delta\":5,\"note\":\"   \"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.fieldErrors[0].field").value("note"));
+
+        verify(productService, never()).adjustStock(anyLong(), anyInt(), any(), any(), any());
+    }
+
+    @Test
+    void adjustStock_returns400_whenNoteIsTooLong() throws Exception {
+        mockMvc.perform(patch("/api/products/{id}/stock", 1L)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"delta\":5,\"note\":\"" + "x".repeat(501) + "\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.fieldErrors[0].field").value("note"));
+    }
+
+    @Test
+    void adjustStock_returns400_whenDeltaIsZero() throws Exception {
+        when(productService.adjustStock(eq(1L), eq(0), any(), any(), any()))
+                .thenThrow(new IllegalArgumentException("delta must not be 0"));
+
+        mockMvc.perform(patch("/api/products/{id}/stock", 1L)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"delta\":0,\"note\":\"Recount\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("delta must not be 0"));
     }
 
     @Test

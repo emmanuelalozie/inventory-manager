@@ -115,7 +115,7 @@ class OrderControllerTest {
     }
 
     @Test
-    void getOrderById_serializesItemsWithoutRecursion() throws Exception {
+    void getOrderById_returnsOrderWithFlatItems() throws Exception {
         Order order = order(1L, OrderStatus.PENDING, item(10L, product(1L, "50.00", 8), 2));
         when(orderService.getOrderById(1L)).thenReturn(order);
 
@@ -128,7 +128,10 @@ class OrderControllerTest {
                 .andExpect(jsonPath("$.orderItems[0].id").value(10))
                 .andExpect(jsonPath("$.orderItems[0].orderId").value(1))
                 .andExpect(jsonPath("$.orderItems[0].order").doesNotExist())
-                .andExpect(jsonPath("$.orderItems[0].product.id").value(1))
+                .andExpect(jsonPath("$.orderItems[0].product").doesNotExist())
+                .andExpect(jsonPath("$.orderItems[0].productId").value(1))
+                .andExpect(jsonPath("$.orderItems[0].productName").value("Widget 1"))
+                .andExpect(jsonPath("$.orderItems[0].productSku").value("W-1"))
                 .andExpect(jsonPath("$.orderItems[0].quantity").value(2))
                 .andExpect(jsonPath("$.orderItems[0].pricePerUnit").value(50.0))
                 .andExpect(jsonPath("$.orderItems[0].subtotal").value(100.0));
@@ -224,7 +227,7 @@ class OrderControllerTest {
                         .content("{\"items\":[{\"productId\":2,\"quantity\":3}]}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.totalAmount").value(30.0))
-                .andExpect(jsonPath("$.orderItems[0].product.id").value(2));
+                .andExpect(jsonPath("$.orderItems[0].productId").value(2));
 
         verify(orderService).updateOrder(eq(1L), argThat(details -> details.getOrderItems().size() == 1
                 && details.getOrderItems().get(0).getQuantity() == 3));
@@ -354,7 +357,8 @@ class OrderControllerTest {
                 .andExpect(header().string(HttpHeaders.LOCATION, endsWith("/api/orders/1/items/10")))
                 .andExpect(jsonPath("$.id").value(10))
                 .andExpect(jsonPath("$.orderId").value(1))
-                .andExpect(jsonPath("$.product.id").value(3))
+                .andExpect(jsonPath("$.productId").value(3))
+                .andExpect(jsonPath("$.productName").value("Widget 3"))
                 .andExpect(jsonPath("$.quantity").value(1))
                 .andExpect(jsonPath("$.subtotal").value(5.0));
 

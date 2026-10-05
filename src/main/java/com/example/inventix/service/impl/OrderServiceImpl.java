@@ -2,6 +2,7 @@ package com.example.inventix.service.impl;
 
 import com.example.inventix.exception.InvalidOrderStateException;
 import com.example.inventix.exception.OrderNotFoundException;
+import com.example.inventix.model.MovementReason;
 import com.example.inventix.model.Order;
 import com.example.inventix.model.OrderItem;
 import com.example.inventix.model.OrderStatus;
@@ -89,7 +90,8 @@ public class OrderServiceImpl implements OrderService {
         Order orderToDelete = getOrderById(id);
 
         // Only pending orders still hold stock. Shipped/delivered stock has left the warehouse
-        // and cancelled orders already gave their stock back.
+        // and cancelled orders already gave their stock back. Removing each item writes a CANCEL movement
+        // that keeps this order's id after the order itself is gone.
         if (holdsReservedStock(orderToDelete)) {
             new ArrayList<>(orderToDelete.getOrderItems())
                     .forEach(item -> orderItemService.deleteOrderItem(item.getId()));
@@ -123,7 +125,8 @@ public class OrderServiceImpl implements OrderService {
         if (status == OrderStatus.CANCELLED) {
             // Give the reserved stock back; the items stay on the order as a record.
             orderToUpdate.getOrderItems()
-                    .forEach(item -> productService.adjustStock(item.getProduct().getId(), item.getQuantity()));
+                    .forEach(item -> productService.adjustStock(item.getProduct().getId(), item.getQuantity(),
+                            MovementReason.CANCEL, "Order #" + id + " cancelled", id));
         }
 
         orderToUpdate.setStatus(status);

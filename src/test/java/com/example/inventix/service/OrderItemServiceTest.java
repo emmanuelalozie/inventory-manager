@@ -4,6 +4,7 @@ import com.example.inventix.exception.InsufficientStockException;
 import com.example.inventix.exception.InvalidOrderStateException;
 import com.example.inventix.exception.OrderItemNotFoundException;
 import com.example.inventix.exception.OrderNotFoundException;
+import com.example.inventix.model.MovementReason;
 import com.example.inventix.model.Order;
 import com.example.inventix.model.OrderItem;
 import com.example.inventix.model.OrderStatus;
@@ -89,11 +90,11 @@ class OrderItemServiceTest {
 
     @Test
     void createOrderItem_reservesStockAndComputesSubtotalAndOrderTotal() {
-        when(productService.adjustStock(1L, -3)).thenReturn(product);
+        when(productService.adjustStock(eq(1L), eq(-3), any(), any(), any())).thenReturn(product);
 
         OrderItem created = orderItemService.createOrderItem(1L, request(1L, 3));
 
-        verify(productService).adjustStock(1L, -3);
+        verify(productService).adjustStock(1L, -3, MovementReason.SALE, "Added to order #1", 1L);
         assertThat(created.getProduct()).isSameAs(product);
         assertThat(created.getPricePerUnit()).isEqualByComparingTo("25.00");
         assertThat(created.getSubtotal()).isEqualByComparingTo("75.00");
@@ -109,8 +110,8 @@ class OrderItemServiceTest {
         cable.setId(2L);
         cable.setPrice(new BigDecimal("4.50"));
         cable.setQuantity(5);
-        when(productService.adjustStock(1L, -3)).thenReturn(product);
-        when(productService.adjustStock(2L, -2)).thenReturn(cable);
+        when(productService.adjustStock(eq(1L), eq(-3), any(), any(), any())).thenReturn(product);
+        when(productService.adjustStock(eq(2L), eq(-2), any(), any(), any())).thenReturn(cable);
 
         orderItemService.createOrderItem(1L, request(1L, 3));
         orderItemService.createOrderItem(1L, request(2L, 2));
@@ -121,7 +122,7 @@ class OrderItemServiceTest {
 
     @Test
     void createOrderItem_usesCurrentProductPriceNotClientValues() {
-        when(productService.adjustStock(1L, -1)).thenReturn(product);
+        when(productService.adjustStock(eq(1L), eq(-1), any(), any(), any())).thenReturn(product);
         OrderItem item = request(1L, 1);
         item.setId(42L);
         item.setPricePerUnit(new BigDecimal("0.01"));
@@ -134,7 +135,7 @@ class OrderItemServiceTest {
 
     @Test
     void createOrderItem_throwsInsufficientStock_andLeavesOrderUnchanged() {
-        when(productService.adjustStock(1L, -50))
+        when(productService.adjustStock(eq(1L), eq(-50), any(), any(), any()))
                 .thenThrow(new InsufficientStockException("Not enough stock for product 'Keyboard'"));
 
         assertThrows(InsufficientStockException.class, () -> orderItemService.createOrderItem(1L, request(1L, 50)));
@@ -149,7 +150,7 @@ class OrderItemServiceTest {
         order.setStatus(OrderStatus.SHIPPED);
 
         assertThrows(InvalidOrderStateException.class, () -> orderItemService.createOrderItem(1L, request(1L, 1)));
-        verify(productService, never()).adjustStock(anyLong(), anyInt());
+        verify(productService, never()).adjustStock(anyLong(), anyInt(), any(), any(), any());
     }
 
     @Test
@@ -157,13 +158,13 @@ class OrderItemServiceTest {
         when(orderRepository.findById(99L)).thenReturn(Optional.empty());
 
         assertThrows(OrderNotFoundException.class, () -> orderItemService.createOrderItem(99L, request(1L, 1)));
-        verify(productService, never()).adjustStock(anyLong(), anyInt());
+        verify(productService, never()).adjustStock(anyLong(), anyInt(), any(), any(), any());
     }
 
     @Test
     void createOrderItem_rejectsNonPositiveQuantity() {
         assertThrows(IllegalArgumentException.class, () -> orderItemService.createOrderItem(1L, request(1L, 0)));
-        verify(productService, never()).adjustStock(anyLong(), anyInt());
+        verify(productService, never()).adjustStock(anyLong(), anyInt(), any(), any(), any());
     }
 
     @Test
@@ -172,7 +173,7 @@ class OrderItemServiceTest {
         item.setQuantity(1);
 
         assertThrows(IllegalArgumentException.class, () -> orderItemService.createOrderItem(1L, item));
-        verify(productService, never()).adjustStock(anyLong(), anyInt());
+        verify(productService, never()).adjustStock(anyLong(), anyInt(), any(), any(), any());
     }
 
     @Test
@@ -183,7 +184,8 @@ class OrderItemServiceTest {
 
         OrderItem updated = orderItemService.updateOrderItem(5L, changes);
 
-        verify(productService).adjustStock(1L, -2);
+        // Taking more stock is a SALE for the difference, linked to the order.
+        verify(productService).adjustStock(1L, -2, MovementReason.SALE, "Order #1: quantity changed from 3 to 5", 1L);
         assertThat(updated).isSameAs(item);
         assertThat(updated.getQuantity()).isEqualTo(5);
         assertThat(updated.getSubtotal()).isEqualByComparingTo("125.00");
@@ -198,14 +200,15 @@ class OrderItemServiceTest {
 
         orderItemService.updateOrderItem(5L, changes);
 
-        verify(productService).adjustStock(1L, 2);
+        // Giving stock back is a CANCEL for the difference.
+        verify(productService).adjustStock(1L, 2, MovementReason.CANCEL, "Order #1: quantity changed from 3 to 1", 1L);
         assertThat(order.getTotalAmount()).isEqualByComparingTo("25.00");
     }
 
     @Test
     void updateOrderItem_keepsItemUnchanged_whenStockIsInsufficient() {
         OrderItem item = existingItem(5L, 3);
-        when(productService.adjustStock(1L, -20))
+        when(productService.adjustStock(eq(1L), eq(-20), any(), any(), any()))
                 .thenThrow(new InsufficientStockException("Not enough stock for product 'Keyboard'"));
         OrderItem changes = new OrderItem();
         changes.setQuantity(23);
@@ -223,7 +226,7 @@ class OrderItemServiceTest {
 
         orderItemService.deleteOrderItem(5L);
 
-        verify(productService).adjustStock(1L, 3);
+        verify(productService).adjustStock(1L, 3, MovementReason.CANCEL, "Removed from order #1", 1L);
         verify(orderItemRepository).delete(item);
         assertThat(order.getOrderItems()).isEmpty();
         assertThat(order.getTotalAmount()).isEqualByComparingTo("0");
@@ -236,7 +239,7 @@ class OrderItemServiceTest {
         order.setStatus(OrderStatus.DELIVERED);
 
         assertThrows(InvalidOrderStateException.class, () -> orderItemService.deleteOrderItem(5L));
-        verify(productService, never()).adjustStock(anyLong(), anyInt());
+        verify(productService, never()).adjustStock(anyLong(), anyInt(), any(), any(), any());
         verify(orderItemRepository, never()).delete(any(OrderItem.class));
         assertThat(order.getOrderItems()).hasSize(1);
     }
