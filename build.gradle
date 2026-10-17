@@ -1,7 +1,7 @@
 plugins {
 	id 'java'
-	id 'org.springframework.boot' version '3.3.5'
-	id 'io.spring.dependency-management' version '1.1.6'
+	id 'org.springframework.boot' version '3.5.16'
+	id 'io.spring.dependency-management' version '1.1.7'
 }
 
 group = 'com.example'
@@ -23,12 +23,18 @@ repositories {
 	mavenCentral()
 }
 
+// Keep H2 at the version that wrote existing ./data files and backups. Spring Boot 3.5 would move it to 2.3.x;
+// upgrading H2 needs the export/import steps in docs/REVIEW.md (O-13).
+ext['h2.version'] = '2.2.224'
+
 dependencies {
 	implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
 	implementation 'org.springframework.boot:spring-boot-starter-validation'
 	implementation 'org.springframework.boot:spring-boot-starter-web'
 	// Schema migrations in src/main/resources/db/migration. H2 needs no extra flyway-database-* module.
 	implementation 'org.flywaydb:flyway-core'
+	// OpenAPI description at /v3/api-docs and Swagger UI at /swagger-ui.html. 2.8.x is the line for Spring Boot 3.5.
+	implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:2.8.17'
 	compileOnly 'org.projectlombok:lombok'
 	developmentOnly 'org.springframework.boot:spring-boot-devtools'
 	runtimeOnly 'com.h2database:h2'

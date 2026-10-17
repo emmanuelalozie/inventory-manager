@@ -1,13 +1,16 @@
 package com.example.inventix.controller;
 
+import com.example.inventix.config.WebConfig;
 import com.example.inventix.dto.ProductRequest;
 import com.example.inventix.dto.ProductResponse;
 import com.example.inventix.dto.StockAdjustmentRequest;
 import com.example.inventix.model.MovementReason;
+import com.example.inventix.model.Product;
 import com.example.inventix.service.ProductService;
 import jakarta.validation.Valid;
 import jakarta.validation.groups.Default;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.domain.Page;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
@@ -31,9 +34,20 @@ public class ProductController {
         this.productService = productService;
     }
 
+    /**
+     * Lists products, optionally filtered by q (name, SKU or description) and paged with page/size.
+     * X-Total-Count holds the number of matches across all pages.
+     */
     @GetMapping
-    public List<ProductResponse> getAllProducts() {
-        return ProductResponse.fromAll(productService.getAllProducts());
+    public ResponseEntity<List<ProductResponse>> getAllProducts(
+            @RequestParam(required = false) String q,
+            @RequestParam(required = false) Integer page,
+            @RequestParam(required = false) Integer size,
+            @RequestParam(required = false) String sort) {
+        Page<Product> result = productService.searchProducts(q, page, size, sort);
+        return ResponseEntity.ok()
+                .header(WebConfig.TOTAL_COUNT_HEADER, String.valueOf(result.getTotalElements()))
+                .body(ProductResponse.fromAll(result.getContent()));
     }
 
     @GetMapping("/low-stock")

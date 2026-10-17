@@ -38,6 +38,21 @@ class InventixApplicationTests {
     }
 
     @Test
+    void openApiDocument_describesTheApi() throws Exception {
+        mockMvc.perform(get("/v3/api-docs"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.info.title").value("Inventix API"))
+                .andExpect(jsonPath("$.paths['/api/products'].get").exists())
+                .andExpect(jsonPath("$.paths['/api/orders'].post").exists());
+    }
+
+    @Test
+    void swaggerUi_isServed() throws Exception {
+        mockMvc.perform(get("/swagger-ui/index.html"))
+                .andExpect(status().isOk());
+    }
+
+    @Test
     void orderLifecycle_overHttp_reservesAndRestoresStock() throws Exception {
         String productJson = mockMvc.perform(post("/api/products")
                         .contentType(MediaType.APPLICATION_JSON)

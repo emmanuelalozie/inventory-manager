@@ -65,6 +65,12 @@ export function sortMovementsNewestFirst(movements) {
   });
 }
 
+/** "3 products", or "50 of 120 products" while not every page is loaded. */
+export function countLabel(shown, total, singular, plural = `${singular}s`) {
+  const noun = total === 1 ? singular : plural;
+  return shown < total ? `${shown} of ${total} ${noun}` : `${total} ${noun}`;
+}
+
 /** True when a page of results was full, so there may be another page after it. */
 export function hasMorePages(pageRows, pageSize) {
   return Array.isArray(pageRows) && pageRows.length >= pageSize;

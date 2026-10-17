@@ -2,6 +2,7 @@ package com.example.inventix.service;
 
 import com.example.inventix.model.MovementReason;
 import com.example.inventix.model.Product;
+import org.springframework.data.domain.Page;
 
 import java.util.List;
 
@@ -24,6 +25,15 @@ public interface ProductService {
     List<Product> getAllProducts();
 
     List<Product> getLowStockProducts(int threshold);
+
+    /**
+     * Products whose name, SKU or description contains {@code query} (case-insensitive; blank means all), sorted
+     * by {@code sort} ("field" or "field,desc"; fields id, name, sku, price, quantity, createdAt, updatedAt).
+     * Without page and size every match is returned.
+     *
+     * @throws com.example.inventix.exception.BadRequestException for an invalid page, size or sort
+     */
+    Page<Product> searchProducts(String query, Integer page, Integer size, String sort);
 
     /**
      * The only way to change a product's stock: changes it by {@code delta} (positive to add, negative to remove)

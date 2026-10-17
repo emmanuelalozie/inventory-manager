@@ -9,14 +9,20 @@ import com.example.inventix.model.OrderStatus;
 import com.example.inventix.repository.OrderRepository;
 import com.example.inventix.service.OrderItemService;
 import com.example.inventix.service.OrderService;
+import com.example.inventix.service.Paging;
 import com.example.inventix.service.ProductService;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 import java.util.Optional;
 
 @Service
@@ -119,6 +125,15 @@ public class OrderServiceImpl implements OrderService {
     @Override
     public List<Order> getOrdersByStatus(OrderStatus status) {
         return orderRepository.findByStatus(status);
+    }
+
+    @Override
+    public Page<Order> searchOrders(OrderStatus status, Integer page, Integer size) {
+        Page<Long> ids = orderRepository.findIds(status, Paging.pageable(page, size, Sort.by(Sort.Direction.DESC, "id")));
+        Map<Long, Order> byId = orderRepository.findByIdIn(ids.getContent()).stream()
+                .collect(Collectors.toMap(Order::getId, Function.identity()));
+        // findByIdIn doesn't keep the page's order, so map the ids back to orders in page order.
+        return ids.map(byId::get);
     }
 
     @Override

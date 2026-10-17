@@ -1,11 +1,13 @@
 package com.example.inventix.config;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.servlet.config.annotation.CorsRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
 /**
  * Lets the desktop UI call the API from another origin.
+ * The allowed origins can be replaced with the {@code inventix.cors.allowed-origins} property (comma-separated).
  */
 @Configuration
 public class WebConfig implements WebMvcConfigurer {
@@ -20,15 +22,25 @@ public class WebConfig implements WebMvcConfigurer {
             "http://127.0.0.1:5500"
     };
 
+    /** Response header with the total number of matches of a list request, across all pages. */
+    public static final String TOTAL_COUNT_HEADER = "X-Total-Count";
+
     static final String[] ALLOWED_METHODS = {"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"};
+
+    private final String[] allowedOrigins;
+
+    // An unset or empty property keeps the defaults above.
+    public WebConfig(@Value("${inventix.cors.allowed-origins:}") String[] allowedOrigins) {
+        this.allowedOrigins = allowedOrigins.length == 0 ? ALLOWED_ORIGINS : allowedOrigins;
+    }
 
     @Override
     public void addCorsMappings(CorsRegistry registry) {
         registry.addMapping("/api/**")
-                .allowedOrigins(ALLOWED_ORIGINS)
+                .allowedOrigins(allowedOrigins)
                 .allowedMethods(ALLOWED_METHODS)
                 .allowedHeaders("*")
-                .exposedHeaders("Location")
+                .exposedHeaders("Location", TOTAL_COUNT_HEADER)
                 .maxAge(3600);
     }
 }

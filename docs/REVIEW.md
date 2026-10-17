@@ -126,8 +126,12 @@ users with BCrypt hashes, H2 console off) **before** changing `server.address`.
 
 ### O-3. Spring Boot 3.3.x is out of open-source support
 
-**Status:** open.
-`build.gradle` uses Spring Boot **3.3.5**. Open-source support for 3.3.x ended on **30 June 2025** (last release
+**Status:** partly fixed. `build.gradle` now uses Spring Boot **3.5.16** with `io.spring.dependency-management`
+1.1.7. H2 is pinned to 2.2.224 (`ext['h2.version']`) so existing database files and backups still open (see O-13).
+The tests' `@MockBean` (deprecated in 3.4) was replaced with `@MockitoBean`. 3.5.x is itself out of OSS support,
+so the move to 4.x below is still open.
+
+**Was:** `build.gradle` used Spring Boot **3.3.5**. Open-source support for 3.3.x ended on **30 June 2025** (last release
 3.3.13), so it no longer gets security fixes. 3.4.x ended 31 December 2025 and 3.5.x ended 30 June 2026. The
 supported lines are now 4.0.x and 4.1.x.
 
@@ -155,8 +159,16 @@ See O-13 and O-15 for the risks that come with a file database.
 
 ### O-5. No pagination or sorting
 
-**Status:** partly done.
-The new stock movement endpoints are paged (`page`, `size` 1–500, newest first). `GET /api/products` and
+**Status:** fixed. `GET /api/products` takes `q` (name, SKU or description), `sort` (whitelisted fields,
+`,asc`/`,desc`), `page` and `size`; `GET /api/orders` takes `status`, `page` and `size` and returns newest first.
+Both set `X-Total-Count` (exposed through CORS), and without `page`/`size` they still return every row, so
+existing callers are unchanged. Orders are paged by id first and then loaded with their items in one query
+(`OrderRepository.findIds` + `findByIdIn`), so Hibernate never pages a collection fetch in memory. The desktop
+Products and Orders lists now load 50 rows at a time with a "Load more" button, and product search runs on the
+backend. The dashboard and the order product pickers still load the full lists. Tests:
+`service/SearchIntegrationTest`, plus the controller and desktop `api.test.mjs` tests.
+
+**Was:** the new stock movement endpoints were paged (`page`, `size` 1–500, newest first). `GET /api/products` and
 `GET /api/orders` still return every row, and each order includes all its items (loaded in the same query
 through an `@EntityGraph`). This is fine for one user's data but won't scale.
 
@@ -185,8 +197,9 @@ moving to another one. Plain `npm run dev` now works, and the unverified `--no-d
 longer needed. The CORS list is unchanged, so unknown origins are still rejected. `desktop/scripts/dev-server.test.js`
 (`npm test` in `desktop/`) checks the server and that its origin matches `devUrl` and `WebConfig.java`.
 
-**Still open:** moving the allowed origins into `application.properties` so they can be changed without a code
-change.
+**Also fixed:** the allowed origins can be replaced without a code change through `inventix.cors.allowed-origins`
+(or `INVENTIX_CORS_ALLOWED_ORIGINS`); the list in `WebConfig.java` is the default. Covered by
+`config/WebConfigOriginsPropertyTest`.
 
 ### O-8. No protection against concurrent stock updates
 
@@ -223,8 +236,14 @@ built inside the service transaction. They are built in the controllers after co
 
 ### O-10. No CI build or test workflow
 
-**Status:** open.
-`.github/workflows/codeql.yml` is entirely commented out, so CodeQL scanning doesn't run, and there is no workflow
+**Status:** fixed. `.github/workflows/ci.yml` runs `./gradlew build` on JDK 17 and the desktop `npm test` for
+pushes and pull requests to `develop`, and uploads the test report when the build fails.
+CodeQL is covered by GitHub's code scanning default setup, which is enabled for the repository and scans Java,
+JavaScript/TypeScript, Rust (the Tauri shell) and the workflows themselves, so the old commented-out
+`codeql.yml` was removed (an advanced workflow can't upload results while default setup is on). `gradlew` is
+now executable in git so the runner can call it. To block merges on failures, mark the `CI` checks as required in the branch protection for `develop`.
+
+**Was:** `.github/workflows/codeql.yml` was entirely commented out, so CodeQL scanning doesn't run, and there is no workflow
 that builds or tests the project.
 
 **Recommendation:** add a GitHub Actions workflow on pushes and pull requests to `develop` that sets up JDK 17
@@ -233,8 +252,12 @@ consider adding `javascript-typescript` for `desktop/src/`.
 
 ### O-11. No OpenAPI / Swagger UI
 
-**Status:** open.
-The old README pointed to `/api/swagger`, which never existed. The API is documented by hand in `docs/API.md`.
+**Status:** fixed. `springdoc-openapi-starter-webmvc-ui` 2.8.17 (the line for Spring Boot 3.5) serves the
+generated description at `/v3/api-docs` and Swagger UI at `/swagger-ui.html`, with the title set in
+`config/OpenApiConfig.java`. Like the API, they are only reachable from this machine. `docs/API.md` stays the
+reference for the behaviour rules. Covered by two tests in `InventixApplicationTests`.
+
+**Was:** the old README pointed to `/api/swagger`, which never existed. The API is documented by hand in `docs/API.md`.
 
 **Recommendation:** add `springdoc-openapi-starter-webmvc-ui` (pick the version that matches the Spring Boot
 version) to serve `/swagger-ui.html` and `/v3/api-docs`, and keep `docs/API.md` for the behaviour rules.
@@ -258,7 +281,8 @@ version) to serve `/swagger-ui.html` and `/v3/api-docs`, and keep `docs/API.md` 
 ### O-13. H2 file format changes on upgrade
 
 **Status:** open (risk).
-The database file is written by H2 2.2.224 (managed by Spring Boot 3.3.x). H2 has changed its file format between
+The database file is written by H2 2.2.224. Spring Boot 3.5 would bring H2 2.3.232, so `build.gradle` pins
+2.2.224 until the export/import below is done; then remove the `ext['h2.version']` line. H2 has changed its file format between
 versions before (2.1 → 2.2 files could not be opened by the other version), and the only supported upgrade path
 was a SQL export and re-import. A Spring Boot upgrade (O-3) can bump H2 the same way, and an old `.zip` backup
 has the same problem.

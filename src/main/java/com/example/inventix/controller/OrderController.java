@@ -1,5 +1,6 @@
 package com.example.inventix.controller;
 
+import com.example.inventix.config.WebConfig;
 import com.example.inventix.dto.OrderItemRequest;
 import com.example.inventix.dto.OrderItemResponse;
 import com.example.inventix.dto.OrderRequest;
@@ -14,6 +15,7 @@ import com.example.inventix.service.OrderItemService;
 import com.example.inventix.service.OrderService;
 import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.domain.Page;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
@@ -37,10 +39,19 @@ public class OrderController {
         this.orderItemService = orderItemService;
     }
 
+    /**
+     * Lists orders newest first, optionally filtered by status and paged with page/size.
+     * X-Total-Count holds the number of matches across all pages.
+     */
     @GetMapping
-    public List<OrderResponse> getAllOrders(@RequestParam(required = false) OrderStatus status) {
-        List<Order> orders = status == null ? orderService.getAllOrders() : orderService.getOrdersByStatus(status);
-        return OrderResponse.fromAll(orders);
+    public ResponseEntity<List<OrderResponse>> getAllOrders(
+            @RequestParam(required = false) OrderStatus status,
+            @RequestParam(required = false) Integer page,
+            @RequestParam(required = false) Integer size) {
+        Page<Order> result = orderService.searchOrders(status, page, size);
+        return ResponseEntity.ok()
+                .header(WebConfig.TOTAL_COUNT_HEADER, String.valueOf(result.getTotalElements()))
+                .body(OrderResponse.fromAll(result.getContent()));
     }
 
     @GetMapping("/{id}")
