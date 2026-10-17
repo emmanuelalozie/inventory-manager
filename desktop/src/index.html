@@ -262,22 +262,29 @@
               <dd><code id="settings-origin"></code></dd>
             </dl>
             <p class="hint">
-              The backend only accepts requests from the origins listed in <code>WebConfig.java</code>
-              (Tauri, <code>localhost:1420</code> and <code>localhost:5500</code>). If the page origin above isn't one
-              of them, requests fail as if the backend were down.
+              The backend only accepts requests from its allowed origins: by default Tauri, <code>localhost:1420</code>
+              and <code>localhost:5500</code> (change them with <code>inventix.cors.allowed-origins</code>). If the page
+              origin above isn't one of them, requests fail as if the backend were down.
             </p>
           </div>
           <div class="card settings-card">
-            <div class="card-header"><h2>Backup</h2></div>
+            <div class="card-header"><h2>Backup and restore</h2></div>
             <p class="muted">
-              Saves a copy of the whole database as a <code>.zip</code> file on the computer running the backend, in
-              its backups folder (<code>inventix.backup.dir</code>, default <code>.\backups</code>). It is safe to back
-              up while the app is in use.
+              Saves a copy of the whole database as a <code>.zip</code> file on the computer running the backend. It is
+              safe to back up while the app is in use. Copy backups to another drive or cloud folder now and then.
             </p>
+            <dl class="info-list" id="backup-locations"></dl>
             <div class="form-actions">
               <button type="button" class="button button-primary" id="backup-now">Back up now</button>
             </div>
             <div id="backup-result" aria-live="polite" hidden></div>
+            <div id="restore-pending" class="banner" hidden></div>
+            <h3 class="section-title">Backups</h3>
+            <div id="backup-list"></div>
+            <p class="hint">
+              Restoring happens the next time the backend starts: stop it and start it again. The database in use
+              then is kept next to the restored one, so nothing is lost.
+            </p>
           </div>
         </section>
       </main>

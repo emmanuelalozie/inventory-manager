@@ -1,6 +1,9 @@
 package com.example.inventix.service;
 
+import com.example.inventix.config.DataLocation;
 import com.example.inventix.dto.BackupResponse;
+import com.example.inventix.dto.BackupStatusResponse;
+import com.example.inventix.exception.BadRequestException;
 import com.example.inventix.exception.BackupNotAvailableException;
 import com.example.inventix.service.impl.BackupServiceImpl;
 import org.junit.jupiter.api.AfterEach;
@@ -15,6 +18,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.zip.ZipEntry;
+import java.util.stream.Stream;
 import java.util.zip.ZipFile;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -47,7 +51,7 @@ class BackupServiceTest {
     @Test
     void createBackup_fileDatabase_writesZipIntoBackupFolder() throws IOException {
         Path backupDir = workDir.resolve("backups");
-        BackupService service = new BackupServiceImpl(fileDb, backupDir.toString());
+        BackupService service = new BackupServiceImpl(fileDb, backupDir.toString(), "");
 
         BackupResponse response = service.createBackup();
 
@@ -66,7 +70,7 @@ class BackupServiceTest {
 
     @Test
     void createBackup_twiceInTheSameSecond_keepsBothFiles() {
-        BackupService service = new BackupServiceImpl(fileDb, workDir.resolve("backups").toString());
+        BackupService service = new BackupServiceImpl(fileDb, workDir.resolve("backups").toString(), "");
 
         BackupResponse first = service.createBackup();
         BackupResponse second = service.createBackup();
@@ -80,10 +84,62 @@ class BackupServiceTest {
     void createBackup_inMemoryDatabase_throwsBackupNotAvailable() {
         JdbcTemplate memoryDb = new JdbcTemplate(new DriverManagerDataSource(
                 "jdbc:h2:mem:backup-service-test", "sa", ""));
-        BackupService service = new BackupServiceImpl(memoryDb, workDir.resolve("backups").toString());
+        BackupService service = new BackupServiceImpl(memoryDb, workDir.resolve("backups").toString(), "");
 
         assertThatThrownBy(service::createBackup)
                 .isInstanceOf(BackupNotAvailableException.class)
                 .hasMessageContaining("in memory");
     }
+
+    @Test
+    void restore_roundTrip_backupIsPutBackOnTheNextStart_andTheOldDatabaseIsKept() throws IOException {
+        Path dataDir = workDir.resolve("db");
+        BackupService service = new BackupServiceImpl(fileDb, workDir.resolve("backups").toString(), dataDir.toString());
+        BackupResponse backup = service.createBackup();
+        fileDb.execute("INSERT INTO sample VALUES (2, 'after the backup')");
+
+        BackupStatusResponse status = service.requestRestore(backup.fileName());
+        assertThat(status.pendingRestore()).isEqualTo(backup.fileName());
+        assertThat(status.backups()).extracting(BackupStatusResponse.Backup::fileName).containsExactly(backup.fileName());
+        assertThat(status.databaseFile()).isEqualTo(dataDir.resolve("inventix.mv.db").toString());
+
+        // The app stops, and on the next start (before the database is opened) the restore is applied.
+        fileDb.execute("SHUTDOWN");
+        List<String> messages = new ArrayList<>();
+        DataLocation.applyPendingRestore(dataDir, messages::add, messages::add);
+
+        assertThat(messages).anyMatch(m -> m.startsWith("Restored the database from"));
+        assertThat(dataDir.resolve(DataLocation.RESTORE_MARKER)).doesNotExist();
+        try (Stream<Path> files = Files.list(dataDir)) {
+            assertThat(files.map(f -> f.getFileName().toString()))
+                    .anyMatch(name -> name.matches("inventix-before-restore-\\d{8}-\\d{6}\\.mv\\.db"));
+        }
+        fileDb = new JdbcTemplate(new DriverManagerDataSource(
+                "jdbc:h2:file:" + dataDir.resolve("inventix") + ";DB_CLOSE_DELAY=-1", "sa", ""));
+        assertThat(fileDb.queryForList("SELECT name FROM sample ORDER BY id", String.class)).containsExactly("first");
+    }
+
+    @Test
+    void requestRestore_acceptsOnlyBackupFileNames_andCanBeCancelled() throws IOException {
+        Path dataDir = workDir.resolve("db");
+        BackupService service = new BackupServiceImpl(fileDb, workDir.resolve("backups").toString(), dataDir.toString());
+        BackupResponse backup = service.createBackup();
+        Files.writeString(workDir.resolve("backups").resolve("not-a-backup.zip"), "nope");
+
+        assertThatThrownBy(() -> service.requestRestore("../db/inventix.mv.db")).isInstanceOf(BadRequestException.class);
+        assertThatThrownBy(() -> service.requestRestore("missing.zip")).isInstanceOf(BadRequestException.class);
+        assertThatThrownBy(() -> service.requestRestore("not-a-backup.zip")).isInstanceOf(BadRequestException.class);
+
+        service.requestRestore(backup.fileName());
+        assertThat(service.cancelRestore().pendingRestore()).isNull();
+        assertThat(dataDir.resolve(DataLocation.RESTORE_MARKER)).doesNotExist();
+    }
+
+    @Test
+    void requestRestore_withoutAManagedDataFolder_isNotAvailable() {
+        BackupService service = new BackupServiceImpl(fileDb, workDir.resolve("backups").toString(), "");
+
+        assertThatThrownBy(() -> service.requestRestore("x.zip")).isInstanceOf(BackupNotAvailableException.class);
+    }
 }
+

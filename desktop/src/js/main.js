@@ -11,7 +11,7 @@ import {
   setBaseUrl,
 } from "./api.js";
 import { initDashboard, showDashboard } from "./dashboard.js";
-import { describeBackup } from "./helpers.js";
+import { describeBackup, formatFileSize } from "./helpers.js";
 import { initOrders, showOrders } from "./orders.js";
 import { initProduction, showProduction } from "./production.js";
 import { initProducts, showProducts } from "./products.js";
@@ -23,7 +23,17 @@ import {
   setLowStockThreshold,
 } from "./settings.js";
 import { initSuppliers, showSuppliers } from "./suppliers.js";
-import { clearFieldErrors, describeError, escapeHtml, setFieldError, showError, toast } from "./ui.js";
+import {
+  clearFieldErrors,
+  confirmDialog,
+  describeError,
+  escapeHtml,
+  formatDateTime,
+  renderPlaceholder,
+  setFieldError,
+  showError,
+  toast,
+} from "./ui.js";
 
 const VIEWS = {
   dashboard: showDashboard,
@@ -148,6 +158,79 @@ function initSettings() {
 
   el("settings-test").addEventListener("click", () => testConnection());
   el("backup-now").addEventListener("click", () => runBackup());
+  el("backup-list").addEventListener("click", async (event) => {
+    const button = event.target.closest('button[data-action="restore"]');
+    if (!button) return;
+    const fileName = button.dataset.file;
+    const ok = await confirmDialog({
+      title: "Restore this backup?",
+      message: `${fileName} will replace the current data the next time the backend starts. The current database is kept as a separate file, so nothing is lost.`,
+      confirmLabel: "Restore on next start",
+      danger: true,
+    });
+    if (!ok) return;
+    try {
+      renderBackupStatus(await backupApi.restore(fileName));
+      toast("Restore scheduled. Restart the backend to finish it.", { type: "success" });
+    } catch (error) {
+      showError(error, "Could not schedule the restore");
+    }
+  });
+  el("restore-pending").addEventListener("click", async (event) => {
+    if (!event.target.closest('[data-action="cancel-restore"]')) return;
+    try {
+      renderBackupStatus(await backupApi.cancelRestore());
+      toast("Restore cancelled", { type: "success" });
+    } catch (error) {
+      showError(error, "Could not cancel the restore");
+    }
+  });
+}
+
+async function loadBackupStatus() {
+  try {
+    renderBackupStatus(await backupApi.status());
+  } catch (error) {
+    renderPlaceholder(el("backup-list"), "error", "Backups are unavailable");
+  }
+}
+
+function renderBackupStatus(status) {
+  el("backup-locations").innerHTML = [
+    ["Database file", status.databaseFile || "Not a file (in-memory database)"],
+    ["Backup folder", status.backupDir],
+  ]
+    .map(([name, value]) => `<dt>${escapeHtml(name)}</dt><dd><code>${escapeHtml(value)}</code></dd>`)
+    .join("");
+  const pending = el("restore-pending");
+  pending.hidden = !status.pendingRestore;
+  pending.innerHTML = status.pendingRestore
+    ? `<div class="banner-body"><strong>Restore pending</strong><p>${escapeHtml(status.pendingRestore)} will be restored the next time the backend starts.</p></div>
+       <button type="button" class="button" data-action="cancel-restore">Cancel restore</button>`
+    : "";
+  const list = el("backup-list");
+  if (!status.backups.length) {
+    renderPlaceholder(list, "empty", "No backups yet.");
+    return;
+  }
+  list.innerHTML = `
+    <div class="table-wrap"><table class="table table-compact">
+      <thead><tr><th>File</th><th>Made</th><th class="num">Size</th><th></th></tr></thead>
+      <tbody>${status.backups
+        .map(
+          (b) => `
+          <tr>
+            <td><code>${escapeHtml(b.fileName)}</code></td>
+            <td>${escapeHtml(formatDateTime(b.createdAt))}</td>
+            <td class="num">${escapeHtml(formatFileSize(b.sizeBytes))}</td>
+            <td class="row-actions">
+              <button type="button" class="button button-small" data-action="restore" data-file="${escapeHtml(b.fileName)}"
+                ${!status.databaseFile ? "disabled" : ""}>Restore…</button>
+            </td>
+          </tr>`
+        )
+        .join("")}</tbody>
+    </table></div>`;
 }
 
 function showSettings() {
@@ -155,6 +238,7 @@ function showSettings() {
   clearFieldErrors(form);
   form.elements.baseUrl.value = getBaseUrl();
   form.elements.threshold.value = getLowStockThreshold();
+  loadBackupStatus();
 }
 
 async function testConnection() {
@@ -187,6 +271,7 @@ async function runBackup() {
         ${rows.map(([name, value]) => `<dt>${escapeHtml(name)}</dt><dd>${escapeHtml(value)}</dd>`).join("")}
       </dl>`;
     toast(title, { type: "success" });
+    loadBackupStatus();
   } catch (error) {
     // The server's message says why, e.g. the backend uses an in-memory database (409).
     const { message, details } = describeError(error);

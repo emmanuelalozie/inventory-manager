@@ -259,6 +259,11 @@ export const stockMovementsApi = {
 export const backupApi = {
   /** Writes a backup zip on the backend machine. Resolves with { fileName, path, sizeBytes, createdAt }. */
   create: () => request("/api/backup", { method: "POST", timeoutMs: BACKUP_TIMEOUT_MS }),
+  /** { databaseFile, backupDir, pendingRestore, backups: [{ fileName, sizeBytes, createdAt }] } */
+  status: () => request("/api/backup"),
+  /** Restores the named backup on the next start of the backend. */
+  restore: (fileName) => request("/api/backup/restore", { method: "POST", body: { fileName } }),
+  cancelRestore: () => request("/api/backup/restore", { method: "DELETE" }),
 };
 
 export const ORDER_STATUSES = ["PENDING", "SHIPPED", "DELIVERED", "CANCELLED"];
