@@ -1,5 +1,6 @@
 package com.example.inventix.service;
 
+import com.example.inventix.exception.BadRequestException;
 import com.example.inventix.exception.DuplicateSkuException;
 import com.example.inventix.exception.InsufficientStockException;
 import com.example.inventix.exception.ProductInUseException;
@@ -55,6 +56,62 @@ class ProductServiceTest {
         product.setDescription("A sample product for testing");
         product.setPrice(BigDecimal.valueOf(99.99));
         product.setQuantity(100);
+    }
+
+    @Test
+    void createProduct_storesSkuTrimmedAndUpperCase() {
+        product.setSku("  abc-1 ");
+        when(productRepository.save(any(Product.class))).thenAnswer(returnsFirstArg());
+
+        productService.createProduct(product);
+
+        assertThat(product.getSku()).isEqualTo("ABC-1");
+        verify(productRepository).existsBySku("ABC-1");
+    }
+
+    @Test
+    void createProduct_throwsDuplicateSku_whenSkuDiffersOnlyInCaseOrSpaces() {
+        product.setSku(" sku12345");
+        when(productRepository.existsBySku("SKU12345")).thenReturn(true);
+
+        assertThrows(DuplicateSkuException.class, () -> productService.createProduct(product));
+    }
+
+    @Test
+    void updateProduct_normalizesSku() {
+        when(productRepository.findById(1L)).thenReturn(Optional.of(product));
+        when(productRepository.save(any(Product.class))).thenAnswer(returnsFirstArg());
+        Product changes = new Product(null, "Renamed", " new-sku ", null, BigDecimal.ONE, 100, null, null);
+
+        Product updated = productService.updateProduct(1L, changes);
+
+        assertThat(updated.getSku()).isEqualTo("NEW-SKU");
+        verify(productRepository).existsBySkuAndIdNot("NEW-SKU", 1L);
+    }
+
+    @Test
+    void adjustStock_rejectsRestockAboveIntegerMax_insteadOfWrappingAround() {
+        when(productRepository.findById(1L)).thenReturn(Optional.of(product));
+
+        assertThrows(BadRequestException.class,
+                () -> productService.adjustStock(1L, Integer.MAX_VALUE, MovementReason.RECEIPT, null, null));
+        assertThat(product.getQuantity()).isEqualTo(100);
+        verify(productRepository, never()).save(any(Product.class));
+        verify(stockMovementRepository, never()).save(any());
+    }
+
+    @Test
+    void adjustStock_handlesMinimumIntDelta() {
+        when(productRepository.findById(1L)).thenReturn(Optional.of(product));
+
+        InsufficientStockException ex = assertThrows(InsufficientStockException.class,
+                () -> productService.adjustStock(1L, Integer.MIN_VALUE, MovementReason.SALE, null, null));
+        assertThat(ex.getMessage()).contains("requested 2147483648");
+    }
+
+    @Test
+    void getLowStockProducts_rejectsNegativeThreshold() {
+        assertThrows(BadRequestException.class, () -> productService.getLowStockProducts(-1));
     }
 
     // The single movement written during the test.

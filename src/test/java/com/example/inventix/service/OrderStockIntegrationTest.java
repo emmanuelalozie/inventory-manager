@@ -281,6 +281,22 @@ class OrderStockIntegrationTest {
         assertThatThrownBy(() -> orderItemService.createOrderItem(orderId, item(cableId, 1)))
                 .isInstanceOf(InvalidOrderStateException.class);
         assertThat(stockOf(cableId)).isEqualTo(3);
+
+        assertThatThrownBy(() -> orderService.deleteOrder(orderId))
+                .isInstanceOf(InvalidOrderStateException.class);
+        flushAndClear();
+        assertThat(orderRepository.findById(orderId)).isPresent();
+    }
+
+    @Test
+    void createOrder_withIdempotencyKey_canBeFoundByThatKey() {
+        Order order = new Order();
+        order.setIdempotencyKey("key-1");
+        Long orderId = orderService.createOrderWithItems(order, List.of(item(keyboardId, 1))).getId();
+        flushAndClear();
+
+        assertThat(orderService.findOrderByIdempotencyKey("key-1")).map(Order::getId).contains(orderId);
+        assertThat(orderService.findOrderByIdempotencyKey("other")).isEmpty();
     }
 
     @Test

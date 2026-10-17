@@ -1,5 +1,6 @@
 package com.example.inventix.service.impl;
 
+import com.example.inventix.exception.BadRequestException;
 import com.example.inventix.exception.DuplicateSkuException;
 import com.example.inventix.exception.InsufficientStockException;
 import com.example.inventix.exception.ProductInUseException;
@@ -18,6 +19,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.Locale;
 
 @Service
 @Transactional
@@ -41,6 +43,7 @@ public class ProductServiceImpl implements ProductService {
     public Product createProduct(Product product) {
         product.setId(null); // always insert, never overwrite an existing product
         product.setVersion(null); // a client-sent version would make Spring Data treat the product as existing
+        product.setSku(normalizeSku(product.getSku()));
         if (productRepository.existsBySku(product.getSku())) {
             throw new DuplicateSkuException("A product with SKU '" + product.getSku() + "' already exists");
         }
@@ -71,6 +74,7 @@ public class ProductServiceImpl implements ProductService {
                     + "). Use PATCH /api/products/" + id + "/stock with a note, or leave quantity out.");
         }
 
+        productDetails.setSku(normalizeSku(productDetails.getSku()));
         if (productRepository.existsBySkuAndIdNot(productDetails.getSku(), id)) {
             throw new DuplicateSkuException("A product with SKU '" + productDetails.getSku() + "' already exists");
         }
@@ -96,30 +100,37 @@ public class ProductServiceImpl implements ProductService {
 
     @Override
     public List<Product> getLowStockProducts(int threshold) {
+        if (threshold < 0) {
+            throw new BadRequestException("threshold must be zero or greater");
+        }
         return productRepository.findByQuantityLessThanEqualOrderByQuantityAsc(threshold);
     }
 
     @Override
     public Product adjustStock(Long productId, int delta, MovementReason reason, String note, Long orderId) {
         if (reason == null) {
-            throw new IllegalArgumentException("reason is required");
+            throw new BadRequestException("reason is required");
         }
         if (delta == 0) {
-            throw new IllegalArgumentException("delta must not be 0");
+            throw new BadRequestException("delta must not be 0");
         }
         String cleanNote = note == null || note.isBlank() ? null : note.strip();
         if (reason == MovementReason.ADJUSTMENT && cleanNote == null) {
-            throw new IllegalArgumentException("A note is required for manual stock adjustments");
+            throw new BadRequestException("A note is required for manual stock adjustments");
         }
 
         Product product = getProductById(productId);
         int available = product.getQuantity() == null ? 0 : product.getQuantity();
-        int newQuantity = available + delta;
+        long newQuantity = (long) available + delta; // long so a large delta can't wrap around
         if (newQuantity < 0) {
             throw new InsufficientStockException("Not enough stock for product '" + product.getName()
-                    + "': available " + available + ", requested " + (-delta));
+                    + "': available " + available + ", requested " + (-(long) delta));
         }
-        product.setQuantity(newQuantity);
+        if (newQuantity > Integer.MAX_VALUE) {
+            throw new BadRequestException("Stock for product '" + product.getName()
+                    + "' cannot exceed " + Integer.MAX_VALUE);
+        }
+        product.setQuantity((int) newQuantity);
         Product saved = productRepository.save(product);
         recordMovement(saved, delta, reason, cleanNote, orderId);
         return saved;
@@ -140,5 +151,10 @@ public class ProductServiceImpl implements ProductService {
 
     private void recordMovement(Product product, int delta, MovementReason reason, String note, Long orderId) {
         stockMovementRepository.save(new StockMovement(product, delta, reason, note, orderId));
+    }
+
+    // SKUs are compared and stored trimmed and upper-case, so "abc-1 " and "ABC-1" can't both exist.
+    private static String normalizeSku(String sku) {
+        return sku == null ? null : sku.trim().toUpperCase(Locale.ROOT);
     }
 }

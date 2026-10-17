@@ -20,7 +20,9 @@ import org.springframework.test.web.servlet.MockMvc;
 
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.Optional;
 
+import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.endsWith;
 import static org.hamcrest.Matchers.hasSize;
 import static org.mockito.ArgumentMatchers.any;
@@ -166,6 +168,47 @@ class OrderControllerTest {
         verify(orderService).createOrderWithItems(any(Order.class), argThat(items -> items.size() == 1
                 && items.get(0).getProduct().getId() == 1L
                 && items.get(0).getQuantity() == 2));
+    }
+
+    @Test
+    void createOrder_withIdempotencyKey_storesTheKeyOnTheNewOrder() throws Exception {
+        when(orderService.createOrderWithItems(any(Order.class), anyList())).thenReturn(order(1L, OrderStatus.PENDING));
+
+        mockMvc.perform(post("/api/orders")
+                        .header("Idempotency-Key", " abc-123 ")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"items\":[]}"))
+                .andExpect(status().isCreated());
+
+        verify(orderService).createOrderWithItems(argThat(o -> "abc-123".equals(o.getIdempotencyKey())), anyList());
+    }
+
+    @Test
+    void createOrder_repeatedIdempotencyKey_returnsFirstOrderWithoutCreatingAnother() throws Exception {
+        Order existing = order(7L, OrderStatus.PENDING, item(10L, product(1L, "50.00", 8), 2));
+        when(orderService.findOrderByIdempotencyKey("abc-123")).thenReturn(Optional.of(existing));
+
+        mockMvc.perform(post("/api/orders")
+                        .header("Idempotency-Key", "abc-123")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"items\":[{\"productId\":1,\"quantity\":2}]}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(7))
+                .andExpect(jsonPath("$.idempotencyKey").doesNotExist());
+
+        verify(orderService, never()).createOrderWithItems(any(Order.class), anyList());
+    }
+
+    @Test
+    void createOrder_returns400_whenIdempotencyKeyIsTooLong() throws Exception {
+        mockMvc.perform(post("/api/orders")
+                        .header("Idempotency-Key", "k".repeat(Order.MAX_IDEMPOTENCY_KEY_LENGTH + 1))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"items\":[]}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value(containsString("Idempotency-Key")));
+
+        verify(orderService, never()).createOrderWithItems(any(Order.class), anyList());
     }
 
     @Test
