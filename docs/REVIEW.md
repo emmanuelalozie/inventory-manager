@@ -238,9 +238,10 @@ built inside the service transaction. They are built in the controllers after co
 
 **Status:** fixed. `.github/workflows/ci.yml` runs `./gradlew build` on JDK 17 and the desktop `npm test` for
 pushes and pull requests to `develop`, and uploads the test report when the build fails.
-`.github/workflows/codeql.yml` is enabled again for `java-kotlin` and `javascript-typescript` (both
-`build-mode: none`), on the same triggers plus a weekly run. `gradlew` is now executable in git so the runner
-can call it. To block merges on failures, mark the `CI` checks as required in the branch protection for `develop`.
+CodeQL is covered by GitHub's code scanning default setup, which is enabled for the repository and scans Java,
+JavaScript/TypeScript, Rust (the Tauri shell) and the workflows themselves, so the old commented-out
+`codeql.yml` was removed (an advanced workflow can't upload results while default setup is on). `gradlew` is
+now executable in git so the runner can call it. To block merges on failures, mark the `CI` checks as required in the branch protection for `develop`.
 
 **Was:** `.github/workflows/codeql.yml` was entirely commented out, so CodeQL scanning doesn't run, and there is no workflow
 that builds or tests the project.
