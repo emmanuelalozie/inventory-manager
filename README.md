@@ -4,9 +4,10 @@
 REST API for products, stock levels and orders, and a lightweight desktop app (Tauri 2 with plain HTML, CSS and
 JavaScript) sits on top of it.
 
-The project is at **v2 Run 2**: data is kept in an H2 file database with Flyway migrations, the database can be
+The project is at **v2 Run 3**: data is kept in an H2 file database with Flyway migrations, the database can be
 backed up from the desktop app, every stock change is recorded in a stock movement ledger, and stock is
-replenished through suppliers and purchase orders or in-house production runs. Inventix is built
+replenished through suppliers and purchase orders or in-house production runs. Products have categories and a
+unit cost, and there are reports with CSV export. Inventix is built
 for one user on one machine: the API only accepts local connections and has no login. See
 [Known limitations and roadmap](#known-limitations-and-roadmap) and the full [review](docs/REVIEW.md).
 
@@ -31,6 +32,12 @@ for one user on one machine: the API only accepts local connections and has no l
 - Reorder list and **Restock**: products at or below their reorder point, with what is already on order. Restock
   adds the reorder quantity to the supplier's draft purchase order or plans a production run, for you to review;
   **Restock all** does that for every product that needs it.
+
+**Reports**
+- Categories for products, and a unit cost per product (updated from purchase-order receipts).
+- Stock value at selling price and at cost, per category.
+- Stock changes per reason, and top sellers from shipped and delivered orders, for any range of days.
+- CSV downloads of products, stock value, stock changes and top sellers, ready for Excel.
 
 **Data**
 - Data is kept between restarts in an H2 file database. The schema is managed by Flyway migrations.
@@ -293,9 +300,8 @@ The [review](docs/REVIEW.md) has the full list with recommendations. The main po
 - **Tauri icons are not checked in** and must be generated before the first desktop build.
 
 **Roadmap**
-1. **v2 Run 3:** categories, unit cost, reports and CSV export.
-2. Plan the migration to Spring Boot 4.x, and the H2 2.3 upgrade (export and re-import, see O-13).
-3. Later: ship backend and desktop as one app, multi-location stock, demand forecasting.
+1. Plan the migration to Spring Boot 4.x, and the H2 2.3 upgrade (export and re-import, see O-13).
+2. Later: ship backend and desktop as one app, multi-location stock, demand forecasting.
 
 ## Contributing
 

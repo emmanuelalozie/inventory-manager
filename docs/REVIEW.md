@@ -78,6 +78,9 @@ Paths below are relative to `src/main/java/com/example/inventix/` unless they st
 | F-15 | **v2 Run 2:** Production runs (`/api/production-runs`, migration `V6`). `PLANNED` → `COMPLETED` adds stock with a `PRODUCTION` movement (`productionRunId`); runs don't consume components. | `model/ProductionRun*.java`, `service/impl/ProductionRunServiceImpl.java`, `controller/ProductionRunController.java`, `V6__production_runs.sql` |
 | F-16 | **v2 Run 2:** Reorder list (`GET /api/reorder-list`, with quantity on order and what is missing) and Restock (`POST /api/products/{id}/restock`, `POST /api/reorder-list/restock`): adds to the supplier's draft purchase order or plans a production run, reusing an existing draft or planned run. | `service/impl/RestockServiceImpl.java`, `controller/RestockController.java` |
 | F-17 | **v2 Run 2:** Desktop Suppliers, Purchase orders (draft editor, receive dialog) and Production views; Restocking section in the product form; Reorder card with Restock and Restock all on the dashboard; history links to purchase orders and runs. | `desktop/src/js/suppliers.js`, `desktop/src/js/purchase-orders.js`, `desktop/src/js/production.js`, `desktop/src/js/dashboard.js`, `desktop/src/js/products.js` |
+| F-18 | **v2 Run 3:** Categories (`/api/categories`, migration `V7`) and a `unitCost` per product; receiving a purchase order line with a cost updates the product's cost. Products can be filtered by `categoryId`. | `model/Category.java`, `service/impl/CategoryServiceImpl.java`, `controller/CategoryController.java`, `V7__categories_and_unit_cost.sql` |
+| F-19 | **v2 Run 3:** Reports (`/api/reports/stock-value`, `/movements`, `/top-sellers`) over whole days (`DateRange`), and `from`/`to` plus `X-Total-Count` on `GET /api/stock-movements`. | `service/impl/ReportServiceImpl.java`, `controller/ReportController.java`, `service/DateRange.java` |
+| F-20 | **v2 Run 3:** CSV export (`/api/export/*.csv`): UTF-8 with BOM, RFC 4180 quoting, formula-like text defused. Desktop Reports view with downloads; category filter, Categories dialog and unit cost in Products. | `export/CsvWriter.java`, `controller/ExportController.java`, `desktop/src/js/reports.js`, `desktop/src/js/products.js` |
 
 **Tests added or updated** (`src/test/java/com/example/inventix/`):
 `controller/ProductControllerTest`, `controller/OrderControllerTest` (new), `service/ProductServiceTest`,
@@ -328,19 +331,21 @@ single app (Tauri sidecar), and log the resolved database path on startup.
 - Deleting a product also deletes its movements. If history must survive deletes, switch to archiving products
   instead of deleting them.
 - `locationId` is always `null` until multi-location stock exists.
-- Movements are listed newest first with no date range filter or total count; reports (Run 3) will need both.
+- *Done in Run 3:* movements can be filtered by a range of days and return a total count.
 
 ## 5. Roadmap
 
 Done in v2 Run 1: persistent storage, backups, local-only access, response DTOs and the stock movement ledger.
 Done in v2 Run 2: suppliers, purchase orders with partial receipts, production runs, buy/make source, reorder
 points and the Restock action (F-13 to F-17).
+Done in v2 Run 3: categories, unit cost, reports and CSV export (F-18 to F-20).
 
 Still planned:
 
 - **Run 2 follow-ups:** bills of materials (a production run that uses up components), a purchase order PDF or
   email to send to the supplier, and partial cancellation of a single line
-- **Run 3:** categories, unit cost, reports (stock value, movements by date range, top sellers) and CSV export
+- **Run 3 follow-ups:** charts on the Reports view, a time zone setting for date ranges, costs per receipt (average
+  cost) instead of last purchase cost
 - **Later:** ship backend and desktop as one app (Tauri sidecar with a bundled Java runtime), multi-location stock,
   demand forecasting
 - Role-based access control is not planned while the app has one user on one machine (see O-2)

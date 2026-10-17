@@ -61,6 +61,8 @@ If the Tauri app sets `app.security.csp`, its `connect-src` must include `http:/
   "supplierId": 2,
   "reorderPoint": 20,
   "reorderQuantity": 100,
+  "categoryId": 1,
+  "unitCost": 9.50,
   "createdAt": "2026-10-04T10:15:30.123456",
   "updatedAt": null,
   "version": 0
@@ -68,7 +70,7 @@ If the Tauri app sets `app.security.csp`, its `connect-src` must include `http:/
 ```
 
 Requests to `POST` and `PUT /api/products` use `ProductRequest`: `name`, `sku`, `description`, `price`,
-`quantity`, `source`, `supplierId`, `reorderPoint`, `reorderQuantity` and `version`. Any other field (`id`, `createdAt`, `updatedAt`, …) is ignored.
+`quantity`, `source`, `supplierId`, `reorderPoint`, `reorderQuantity`, `categoryId`, `unitCost` and `version`. Any other field (`id`, `createdAt`, `updatedAt`, …) is ignored.
 
 | Field | Type | Rules |
 |---|---|---|
@@ -82,11 +84,13 @@ Requests to `POST` and `PUT /api/products` use `ProductRequest`: `name`, `sku`, 
 | `supplierId` | number or null | The supplier a `BUY` product is ordered from. Must be an existing supplier (**400** otherwise), and must be left out for `MAKE` products (**400**). |
 | `reorderPoint` | integer or null | >= 0. The product appears on the [reorder list](#get-apireorder-list) when `quantity <= reorderPoint`. |
 | `reorderQuantity` | integer or null | > 0. How many Restock orders or plans to make. |
+| `categoryId` | number or null | An existing [category](#categories) (**400** otherwise) |
+| `unitCost` | number or null | >= 0, at most 2 decimals. What one unit costs to buy or make (not the selling price). Receiving a purchase order line that has a `unitCost` sets the product's `unitCost` to it (last purchase cost). |
 | `createdAt`, `updatedAt` | string | Read-only, set by the server |
 | `version` | integer | Optimistic-lock counter, set by the server. Starts at `0` and goes up on every change (including stock changes from orders). Ignored on `POST`. Optional on `PUT`: if sent, it must match the stored value or the call fails with **409**. |
 
-`PUT` replaces `source`, `supplierId`, `reorderPoint` and `reorderQuantity` like the other fields, so leaving them
-out clears them (and `source` falls back to `BUY`).
+`PUT` replaces `source`, `supplierId`, `reorderPoint`, `reorderQuantity`, `categoryId` and `unitCost` like the other
+fields, so leaving them out clears them (and `source` falls back to `BUY`).
 
 ### Order (`OrderResponse`)
 
@@ -281,7 +285,7 @@ For nested fields, `field` uses paths like `items[0].quantity`.
 
 | Method | Path | Success | Description |
 |---|---|---|---|
-| GET | `/api/products` | 200 | List products (optional `?q=&page=&size=&sort=`) |
+| GET | `/api/products` | 200 | List products (optional `?q=&categoryId=&page=&size=&sort=`) |
 | GET | `/api/products/low-stock?threshold=10` | 200 | List products with `quantity <= threshold` |
 | GET | `/api/products/{id}` | 200 | Get one product |
 | POST | `/api/products` | 201 | Create a product |
@@ -289,7 +293,7 @@ For nested fields, `field` uses paths like `items[0].quantity`.
 | PATCH | `/api/products/{id}/stock` | 200 | Add to or remove from stock, with a required note |
 | DELETE | `/api/products/{id}` | 204 | Delete a product and its movements |
 | GET | `/api/products/{id}/movements` | 200 | A product's stock movements, newest first |
-| GET | `/api/stock-movements` | 200 | All stock movements, newest first (optional `?productId=&reason=`) |
+| GET | `/api/stock-movements` | 200 | All stock movements, newest first (optional `?productId=&reason=&from=&to=`) |
 | GET | `/api/orders` | 200 | List orders, newest first (optional `?status=&page=&size=`) |
 | GET | `/api/orders/{id}` | 200 | Get one order with its items |
 | POST | `/api/orders` | 201 | Create an order, optionally with items |
@@ -322,6 +326,14 @@ For nested fields, `field` uses paths like `items[0].quantity`.
 | GET | `/api/reorder-list` | 200 | Products at or below their reorder point |
 | POST | `/api/products/{id}/restock` | 200 | Add a product's reorder quantity to a draft purchase order or a planned run |
 | POST | `/api/reorder-list/restock` | 200 | Restock every ready product on the reorder list |
+| GET | `/api/categories` | 200 | List categories with their product counts |
+| POST | `/api/categories` | 201 | Create a category |
+| PUT | `/api/categories/{id}` | 200 | Rename a category |
+| DELETE | `/api/categories/{id}` | 204 | Delete a category that has no products |
+| GET | `/api/reports/stock-value` | 200 | Stock value at price and at cost, per category |
+| GET | `/api/reports/movements` | 200 | Stock changes per reason (optional `?from=&to=`) |
+| GET | `/api/reports/top-sellers` | 200 | Products by units sold (optional `?from=&to=&limit=`) |
+| GET | `/api/export/{products,stock-value,stock-movements,top-sellers}.csv` | 200 | CSV downloads |
 
 ---
 
@@ -498,9 +510,10 @@ page with fewer than `size` rows is the last one.
 - **400**: `page` < 0, `size` outside 1–500, or either isn't an integer
 - **404**: no product with that id
 
-#### `GET /api/stock-movements?productId=&reason=&page=0&size=100`
+#### `GET /api/stock-movements?productId=&reason=&from=&to=&page=0&size=100`
 
-Both filters are optional and can be combined. `reason` is one of `SALE`, `CANCEL`, `RECEIPT`, `PRODUCTION`,
+All filters are optional and can be combined. `from` and `to` are dates (`2026-10-01`), both days included (see
+[Dates in reports](#dates-in-reports)). The `X-Total-Count` header holds the number of matches across all pages. `reason` is one of `SALE`, `CANCEL`, `RECEIPT`, `PRODUCTION`,
 `ADJUSTMENT`. An unknown `productId` returns an empty array, not 404.
 
 - **200**: `StockMovement[]`
@@ -516,7 +529,8 @@ Both filters are optional and can be combined. `reason` is one of `SALE`, `CANCE
 ]
 ```
 
-- **400**: `reason` isn't a valid `MovementReason`, or `page`/`size` is invalid
+- **400**: `reason` isn't a valid `MovementReason`, `page`/`size` is invalid, a date isn't `YYYY-MM-DD`, or `from`
+  is after `to`
 
 ---
 
@@ -881,6 +895,64 @@ product was added (false when it was already there). Works whatever the current 
 
 Restocks every product on the reorder list that has no `problem` and isn't `covered`. Returns one result per
 product on the list; the others have `action: "SKIPPED"` and the reason in `message`.
+
+### Categories
+
+`GET /api/categories` returns `[{ "id": 1, "name": "Cables", "productCount": 3, "version": 0 }]`, by name.
+
+- `POST /api/categories` `{"name": "Cables"}` (required, max 100 characters, unique ignoring case): **201** with
+  `Location`; **409** if the name is taken
+- `PUT /api/categories/{id}` `{"name": "Cables & adapters", "version": 0}`: **200**; **404**; **409** if the name is
+  taken or `version` is stale
+- `DELETE /api/categories/{id}`: **204**; **404**; **409** while products are in it
+
+### Reports
+
+#### Dates in reports
+
+`from` and `to` are dates in `YYYY-MM-DD` form and both days are included: `from=2026-10-01&to=2026-10-31` covers
+every timestamp from 1 October 00:00 up to (not including) 1 November 00:00. Leave either out for an open range.
+Timestamps are the backend machine's local time. `from` after `to` returns **400**.
+
+#### `GET /api/reports/stock-value`
+
+```json
+{
+  "total": { "products": 5, "units": 163, "valueAtPrice": 7412.43, "valueAtCost": 1111.50, "productsWithoutCost": 4 },
+  "categories": [
+    { "categoryId": 1, "categoryName": "Peripherals", "products": 1, "units": 117, "valueAtPrice": 2923.83,
+      "valueAtCost": 1111.50, "productsWithoutCost": 0 },
+    { "categoryId": null, "categoryName": null, "products": 4, "units": 46, "valueAtPrice": 4488.60,
+      "valueAtCost": 0.00, "productsWithoutCost": 4 }
+  ]
+}
+```
+
+Values are `quantity × price` and `quantity × unitCost`. Products without a `unitCost` count as 0 at cost;
+`productsWithoutCost` says how many, so the cost value can be read as a lower bound. Products without a category
+are grouped last with `categoryId: null`.
+
+#### `GET /api/reports/movements?from=&to=`
+
+Per reason with any movements in the range: `[{ "reason": "SALE", "movements": 2, "unitsIn": 0, "unitsOut": 4 }]`.
+
+#### `GET /api/reports/top-sellers?from=&to=&limit=10`
+
+Products by units on `SHIPPED` and `DELIVERED` orders created in the range, most first (revenue breaks ties):
+`[{ "productId": 1, "name": "Wireless Mouse", "sku": "WM-001", "unitsSold": 3, "revenue": 74.97 }]`. Revenue is
+the item subtotals (the price captured when each item was added). `limit` is 1–100 (**400** otherwise).
+
+### CSV export
+
+`GET /api/export/products.csv`, `/api/export/stock-value.csv`, `/api/export/stock-movements.csv?productId=&reason=&from=&to=`
+and `/api/export/top-sellers.csv?from=&to=&limit=` return `text/csv;charset=UTF-8` with
+`Content-Disposition: attachment; filename="products-2026-10-17.csv"` (exposed through CORS).
+
+- UTF-8 with a byte order mark, so Excel shows non-English text correctly; comma separated, CRLF line ends,
+  fields quoted when they contain a comma, quote or line break.
+- Text that a spreadsheet could run as a formula (starting with `=`, `+`, `-`, `@`, tab or carriage return) is
+  written with a leading `'`. Numbers are written as plain numbers.
+- The stock movements export includes every match (it reads the ledger in pages of 500).
 
 ---
 
