@@ -1,5 +1,6 @@
 package com.example.inventix.service.impl;
 
+import com.example.inventix.exception.BadRequestException;
 import com.example.inventix.exception.InvalidOrderStateException;
 import com.example.inventix.exception.OrderItemNotFoundException;
 import com.example.inventix.exception.OrderNotFoundException;
@@ -42,7 +43,7 @@ public class OrderItemServiceImpl implements OrderItemService {
         ensureEditable(order);
 
         if (orderItem.getProduct() == null || orderItem.getProduct().getId() == null) {
-            throw new IllegalArgumentException("productId is required");
+            throw new BadRequestException("productId is required");
         }
         requirePositiveQuantity(orderItem.getQuantity());
 
@@ -135,7 +136,7 @@ public class OrderItemServiceImpl implements OrderItemService {
 
     private void requirePositiveQuantity(int quantity) {
         if (quantity <= 0) {
-            throw new IllegalArgumentException("quantity must be greater than 0");
+            throw new BadRequestException("quantity must be greater than 0");
         }
     }
 }

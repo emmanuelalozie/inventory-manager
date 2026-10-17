@@ -1,5 +1,6 @@
 package com.example.inventix.controller;
 
+import com.example.inventix.exception.BadRequestException;
 import com.example.inventix.config.WebConfig;
 import com.example.inventix.exception.DuplicateSkuException;
 import com.example.inventix.exception.InsufficientStockException;
@@ -127,6 +128,15 @@ class ProductControllerTest {
                 .andExpect(status().isOk());
 
         verify(productService).getLowStockProducts(3);
+    }
+
+    @Test
+    void unexpectedIllegalArgument_returns400WithoutItsMessage() throws Exception {
+        when(productService.getAllProducts()).thenThrow(new IllegalArgumentException("internal detail: table PRODUCTS"));
+
+        mockMvc.perform(get("/api/products"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("Invalid request"));
     }
 
     @Test
@@ -354,7 +364,7 @@ class ProductControllerTest {
     @Test
     void adjustStock_returns400_whenDeltaIsZero() throws Exception {
         when(productService.adjustStock(eq(1L), eq(0), any(), any(), any()))
-                .thenThrow(new IllegalArgumentException("delta must not be 0"));
+                .thenThrow(new BadRequestException("delta must not be 0"));
 
         mockMvc.perform(patch("/api/products/{id}/stock", 1L)
                         .contentType(MediaType.APPLICATION_JSON)

@@ -94,9 +94,17 @@ public class GlobalExceptionHandler {
                 List.of(new ApiError.FieldErrorDetail("quantity", ex.getMessage())));
     }
 
-    @ExceptionHandler(IllegalArgumentException.class)
-    public ResponseEntity<ApiError> handleBadRequest(IllegalArgumentException ex, HttpServletRequest request) {
+    @ExceptionHandler(BadRequestException.class)
+    public ResponseEntity<ApiError> handleBadRequest(BadRequestException ex, HttpServletRequest request) {
         return build(HttpStatus.BAD_REQUEST, ex.getMessage(), request, null);
+    }
+
+    // Any other IllegalArgumentException may come from a library and carry internal details, so the
+    // message is logged rather than returned.
+    @ExceptionHandler(IllegalArgumentException.class)
+    public ResponseEntity<ApiError> handleIllegalArgument(IllegalArgumentException ex, HttpServletRequest request) {
+        log.warn("Rejected request to {}", request.getRequestURI(), ex);
+        return build(HttpStatus.BAD_REQUEST, "Invalid request", request, null);
     }
 
     @ExceptionHandler(MethodArgumentTypeMismatchException.class)
@@ -116,8 +124,9 @@ public class GlobalExceptionHandler {
         if (ex instanceof ErrorResponse errorResponse) {
             HttpStatus status = HttpStatus.resolve(errorResponse.getStatusCode().value());
             if (status != null) {
+                // ProblemDetail texts are written for clients; ex.getMessage() can include internals.
                 String detail = errorResponse.getBody().getDetail();
-                return build(status, detail != null ? detail : ex.getMessage(), request, null);
+                return build(status, detail != null ? detail : status.getReasonPhrase(), request, null);
             }
         }
         log.error("Unexpected error on {}", request.getRequestURI(), ex);

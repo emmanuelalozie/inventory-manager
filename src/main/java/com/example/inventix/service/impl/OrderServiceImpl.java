@@ -17,6 +17,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 
 @Service
 @Transactional
@@ -37,6 +38,7 @@ public class OrderServiceImpl implements OrderService {
 
     @Override
     public Order createOrder(Order order) {
+        // Only the idempotency key is kept from the caller; everything else starts fresh.
         order.setId(null);
         order.setStatus(OrderStatus.PENDING);
         order.setOrderItems(new ArrayList<>()); // Items are added through OrderItemService so stock is reserved
@@ -51,6 +53,11 @@ public class OrderServiceImpl implements OrderService {
             orderItems.forEach(item -> orderItemService.createOrderItem(savedOrder.getId(), item));
         }
         return getOrderById(savedOrder.getId()); // Return the updated order
+    }
+
+    @Override
+    public Optional<Order> findOrderByIdempotencyKey(String idempotencyKey) {
+        return orderRepository.findByIdempotencyKey(idempotencyKey);
     }
 
     @Override
@@ -88,9 +95,13 @@ public class OrderServiceImpl implements OrderService {
     @Override
     public void deleteOrder(Long id) {
         Order orderToDelete = getOrderById(id);
+        OrderStatus status = orderToDelete.getStatus();
+        if (status == OrderStatus.SHIPPED || status == OrderStatus.DELIVERED) {
+            throw new InvalidOrderStateException("Order " + id + " is " + status
+                    + "; shipped and delivered orders are kept as a record and cannot be deleted");
+        }
 
-        // Only pending orders still hold stock. Shipped/delivered stock has left the warehouse
-        // and cancelled orders already gave their stock back. Removing each item writes a CANCEL movement
+        // Only pending orders still hold stock; cancelled orders already gave their stock back. Removing each item writes a CANCEL movement
         // that keeps this order's id after the order itself is gone.
         if (holdsReservedStock(orderToDelete)) {
             new ArrayList<>(orderToDelete.getOrderItems())

@@ -6,6 +6,7 @@ import com.example.inventix.dto.OrderRequest;
 import com.example.inventix.dto.OrderResponse;
 import com.example.inventix.dto.OrderStatusRequest;
 import com.example.inventix.dto.QuantityUpdateRequest;
+import com.example.inventix.exception.BadRequestException;
 import com.example.inventix.model.Order;
 import com.example.inventix.model.OrderItem;
 import com.example.inventix.model.OrderStatus;
@@ -19,6 +20,7 @@ import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
 
 import java.net.URI;
 import java.util.List;
+import java.util.Optional;
 
 // Entities are mapped to DTOs here, after the service transaction has committed. Orders come back from
 // OrderRepository with their items and products already loaded, so nothing is lazy-loaded during mapping.
@@ -46,9 +48,31 @@ public class OrderController {
         return ResponseEntity.ok(OrderResponse.from(orderService.getOrderById(id)));
     }
 
+    static final String IDEMPOTENCY_KEY_HEADER = "Idempotency-Key";
+
+    /**
+     * Creates an order. With an Idempotency-Key header, repeating the request (e.g. after a timeout) returns the
+     * order created the first time with 200 instead of creating and reserving stock for a second one.
+     */
     @PostMapping
-    public ResponseEntity<OrderResponse> createOrder(@Valid @RequestBody OrderRequest request) {
-        OrderResponse createdOrder = OrderResponse.from(orderService.createOrderWithItems(new Order(), request.toItems()));
+    public ResponseEntity<OrderResponse> createOrder(
+            @RequestHeader(value = IDEMPOTENCY_KEY_HEADER, required = false) String idempotencyKey,
+            @Valid @RequestBody OrderRequest request) {
+        if (idempotencyKey != null) {
+            idempotencyKey = idempotencyKey.trim();
+            if (idempotencyKey.isEmpty() || idempotencyKey.length() > Order.MAX_IDEMPOTENCY_KEY_LENGTH) {
+                throw new BadRequestException(IDEMPOTENCY_KEY_HEADER + " must be 1 to "
+                        + Order.MAX_IDEMPOTENCY_KEY_LENGTH + " characters");
+            }
+            Optional<Order> existing = orderService.findOrderByIdempotencyKey(idempotencyKey);
+            if (existing.isPresent()) {
+                return ResponseEntity.ok(OrderResponse.from(existing.get()));
+            }
+        }
+
+        Order newOrder = new Order();
+        newOrder.setIdempotencyKey(idempotencyKey);
+        OrderResponse createdOrder = OrderResponse.from(orderService.createOrderWithItems(newOrder, request.toItems()));
         URI location = ServletUriComponentsBuilder.fromCurrentRequest()
                 .path("/{id}")
                 .buildAndExpand(createdOrder.id())

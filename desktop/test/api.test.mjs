@@ -9,6 +9,8 @@ import {
   DEFAULT_BASE_URL,
   MOVEMENTS_PAGE_SIZE,
   backupApi,
+  newIdempotencyKey,
+  ordersApi,
   productsApi,
   stockMovementsApi,
 } from "../src/js/api.js";
@@ -106,4 +108,26 @@ test("backup errors carry the server's message", async (t) => {
     assert.equal(error.message, "Backups need a file database; this one is in memory");
     return true;
   });
+});
+
+test("ordersApi.create sends the Idempotency-Key header only when a key is given", async (t) => {
+  const headers = [];
+  const original = globalThis.fetch;
+  globalThis.fetch = async (url, init) => {
+    headers.push(init.headers);
+    return { status: 201, ok: true, statusText: "Created", text: async () => '{"id":1}' };
+  };
+  t.after(() => {
+    globalThis.fetch = original;
+  });
+
+  await ordersApi.create([{ productId: 1, quantity: 2 }], "key-1");
+  await ordersApi.create([]);
+
+  assert.equal(headers[0]["Idempotency-Key"], "key-1");
+  assert.equal("Idempotency-Key" in headers[1], false);
+});
+
+test("newIdempotencyKey returns a different key each time", () => {
+  assert.notEqual(newIdempotencyKey(), newIdempotencyKey());
 });

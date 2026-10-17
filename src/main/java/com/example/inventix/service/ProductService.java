@@ -31,7 +31,7 @@ public interface ProductService {
      *
      * @param note    optional, except for {@link MovementReason#ADJUSTMENT} where it is required
      * @param orderId the order that caused the change, or null
-     * @throws IllegalArgumentException if delta is 0, the reason is missing, or an adjustment has no note
+     * @throws com.example.inventix.exception.BadRequestException if delta is 0, the reason is missing, or an adjustment has no note
      * @throws com.example.inventix.exception.InsufficientStockException if the stock would go below zero
      */
     Product adjustStock(Long productId, int delta, MovementReason reason, String note, Long orderId);

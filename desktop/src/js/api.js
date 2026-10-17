@@ -106,9 +106,9 @@ function notifyBaseUrlChange(url) {
 // Core request
 // ---------------------------------------------------------------------------
 
-async function request(path, { method = "GET", body, timeoutMs = REQUEST_TIMEOUT_MS } = {}) {
+async function request(path, { method = "GET", body, headers: extraHeaders, timeoutMs = REQUEST_TIMEOUT_MS } = {}) {
   const baseUrl = getBaseUrl();
-  const headers = { Accept: "application/json" };
+  const headers = { Accept: "application/json", ...extraHeaders };
   const init = { method, headers };
   if (body !== undefined) {
     headers["Content-Type"] = "application/json";
@@ -157,6 +157,14 @@ async function request(path, { method = "GET", body, timeoutMs = REQUEST_TIMEOUT
 }
 
 const id = (value) => encodeURIComponent(String(value));
+
+/** A random key for the Idempotency-Key header. */
+export function newIdempotencyKey() {
+  if (globalThis.crypto && typeof globalThis.crypto.randomUUID === "function") {
+    return globalThis.crypto.randomUUID();
+  }
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+}
 
 /** "?a=1&b=2" from the params that are set, or "" when none are. */
 function query(params) {
@@ -225,8 +233,16 @@ export const ordersApi = {
   list: (status) =>
     request(status ? `/api/orders?status=${encodeURIComponent(status)}` : "/api/orders"),
   get: (orderId) => request(`/api/orders/${id(orderId)}`),
-  /** items: [{ productId, quantity }] */
-  create: (items = []) => request("/api/orders", { method: "POST", body: { items } }),
+  /**
+   * items: [{ productId, quantity }]. Pass the same idempotencyKey when retrying a create that may have
+   * reached the backend (e.g. after a timeout), so it returns the first order instead of making a second one.
+   */
+  create: (items = [], idempotencyKey) =>
+    request("/api/orders", {
+      method: "POST",
+      body: { items },
+      headers: idempotencyKey ? { "Idempotency-Key": idempotencyKey } : undefined,
+    }),
   replaceItems: (orderId, items) =>
     request(`/api/orders/${id(orderId)}`, { method: "PUT", body: { items } }),
   setStatus: (orderId, status) =>

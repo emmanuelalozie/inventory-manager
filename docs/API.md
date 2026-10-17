@@ -65,7 +65,7 @@ Requests to `POST` and `PUT /api/products` use `ProductRequest`: `name`, `sku`, 
 |---|---|---|
 | `id` | number | Read-only. Ignored in request bodies. |
 | `name` | string | Required, not blank, max 255 characters |
-| `sku` | string | Required, not blank, max 64 characters, unique across products |
+| `sku` | string | Required, not blank, max 64 characters, unique across products. Stored trimmed and in upper case, so `" wm-001"` is saved as `"WM-001"` and counts as a duplicate of it. |
 | `description` | string or null | Optional, max 1000 characters |
 | `price` | number | Required, >= 0 |
 | `quantity` | integer | The stock on hand, >= 0. Required on `POST` (the starting stock). Optional on `PUT`, and it can't change there (see [`PUT /api/products/{id}`](#put-apiproductsid)). |
@@ -308,7 +308,7 @@ Returns products whose `quantity` is less than or equal to `threshold`, lowest s
 `threshold` is optional and defaults to `10`.
 
 - **200**: `Product[]`
-- **400**: `threshold` isn't an integer
+- **400**: `threshold` isn't an integer, or is negative
 
 ```json
 [
@@ -528,6 +528,12 @@ Creates a `PENDING` order and adds the given items, reserving their stock. `item
 empty to create an empty order. If any item fails (unknown product, not enough stock), the whole request
 fails and nothing is created.
 
+**Retries:** send an `Idempotency-Key` header (any unique string up to 100 characters, e.g. a UUID) and reuse it
+when retrying the same create, for example after a timeout. If an order was already created with that key, it
+is returned with **200** and nothing new is created or reserved. The key is matched on its own; the body of a
+repeated request isn't compared with the first one. Two requests with the same key at exactly the same time can
+make the second fail with **409**; retrying it then returns the order.
+
 Request:
 
 ```json
@@ -547,6 +553,8 @@ Request:
 
 - **201**: the created `Order`. The `Location` header is the order's absolute URL, e.g.
   `http://localhost:8080/api/orders/1`.
+- **200**: an order already exists for this `Idempotency-Key`; it is returned unchanged.
+- **400**: `Idempotency-Key` is empty or longer than 100 characters
 
 ```json
 {
@@ -610,11 +618,13 @@ Request:
 
 #### `DELETE /api/orders/{id}`
 
-Deletes the order and its items. If the order is `PENDING`, its stock is given back first, with a `CANCEL`
-movement per item. Those movements keep the deleted order's `orderId`.
+Deletes a `PENDING` or `CANCELLED` order and its items. If the order is `PENDING`, its stock is given back
+first, with a `CANCEL` movement per item. Those movements keep the deleted order's `orderId`. `SHIPPED` and
+`DELIVERED` orders are kept as a record and can't be deleted.
 
 - **204**: deleted, no body
 - **404**: no order with that id
+- **409**: the order is `SHIPPED` or `DELIVERED`
 
 ---
 

@@ -1,6 +1,13 @@
 // Orders view: list, create, details with items, add/change/remove items, status changes, delete.
 
-import { ApiError, ORDER_STATUSES, STATUS_TRANSITIONS, ordersApi, productsApi } from "./api.js";
+import {
+  ApiError,
+  ORDER_STATUSES,
+  STATUS_TRANSITIONS,
+  newIdempotencyKey,
+  ordersApi,
+  productsApi,
+} from "./api.js";
 import { parseWholeNumber, productOptions } from "./products.js";
 import {
   confirmDialog,
@@ -143,7 +150,11 @@ function renderList() {
         <td>${statusBadge(o.status)}</td>
         <td class="row-actions">
           <button type="button" class="button button-small" data-action="view" data-id="${escapeHtml(o.id)}">View</button>
-          <button type="button" class="button button-small button-danger-ghost" data-action="delete" data-id="${escapeHtml(o.id)}">Delete</button>
+          ${
+            canDelete(o)
+              ? `<button type="button" class="button button-small button-danger-ghost" data-action="delete" data-id="${escapeHtml(o.id)}">Delete</button>`
+              : ""
+          }
         </td>
       </tr>`
     )
@@ -178,6 +189,8 @@ async function openNewOrderDialog() {
 
   const byId = new Map(available.map((p) => [String(p.id), p]));
   const lines = new Map(); // productId -> quantity
+  // Resubmitting the same items (e.g. after a timeout) reuses the key, so the backend can't create the order twice.
+  let submitted = { items: null, key: null };
 
   const created = await openDialog({
     title: "New order",
@@ -289,7 +302,11 @@ async function openNewOrderDialog() {
         productId: Number(productId),
         quantity,
       }));
-      return ordersApi.create(items);
+      const itemsJson = JSON.stringify(items);
+      if (submitted.items !== itemsJson) {
+        submitted = { items: itemsJson, key: newIdempotencyKey() };
+      }
+      return ordersApi.create(items, submitted.key);
     },
   });
 
@@ -412,7 +429,7 @@ function renderDetail() {
       <div class="actions">
         ${statusButtons}
         <button type="button" class="button" data-action="refresh">Refresh</button>
-        <button type="button" class="button button-danger" data-action="delete-order">Delete</button>
+        ${canDelete(order) ? `<button type="button" class="button button-danger" data-action="delete-order">Delete</button>` : ""}
       </div>
     </div>
     <div class="stats stats-compact">
@@ -560,6 +577,11 @@ async function changeStatus(order, status) {
     showError(error, "Could not change the status");
     loadOrderDetail(order.id, { quiet: true });
   }
+}
+
+/** Shipped and delivered orders are kept as a record; the backend refuses to delete them. */
+function canDelete(order) {
+  return order.status !== "SHIPPED" && order.status !== "DELIVERED";
 }
 
 /** Deletes an order after confirmation. Resolves true if it was deleted. */

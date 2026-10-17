@@ -24,6 +24,8 @@ import java.util.Objects;
 @Setter
 @ToString
 public class Order {
+    public static final int MAX_IDEMPOTENCY_KEY_LENGTH = 100;
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
@@ -37,6 +39,11 @@ public class Order {
 
     @Column(precision = 14, scale = 2)
     private BigDecimal totalAmount = BigDecimal.ZERO;
+
+    // Client-chosen Idempotency-Key from POST /api/orders. Unique, so a retried request can't create a second order.
+    @Column(name = "idempotency_key", unique = true, updatable = false, length = MAX_IDEMPOTENCY_KEY_LENGTH)
+    @ToString.Exclude
+    private String idempotencyKey;
 
     @Column(name = "created_at", updatable = false)
     private LocalDateTime createdAt;

@@ -5,12 +5,18 @@ import com.example.inventix.model.OrderItem;
 import com.example.inventix.model.OrderStatus;
 
 import java.util.List;
+import java.util.Optional;
 
 public interface OrderService {
 
     Order createOrder(Order order);
 
     Order createOrderWithItems(Order order, List<OrderItem> orderItems);
+
+    /**
+     * Returns the order created earlier with this Idempotency-Key, if any.
+     */
+    Optional<Order> findOrderByIdempotencyKey(String idempotencyKey);
 
     Order getOrderById(Long id);
 
@@ -21,6 +27,11 @@ public interface OrderService {
 
     Order addOrderItems(Long orderId, List<OrderItem> newItems);
 
+    /**
+     * Deletes a pending or cancelled order. Shipped and delivered orders are kept as a record.
+     *
+     * @throws com.example.inventix.exception.InvalidOrderStateException if the order is shipped or delivered
+     */
     void deleteOrder(Long id);
 
     List<Order> getAllOrders();

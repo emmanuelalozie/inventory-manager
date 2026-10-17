@@ -1,5 +1,6 @@
 package com.example.inventix.controller;
 
+import com.example.inventix.exception.BadRequestException;
 import com.example.inventix.exception.ProductNotFoundException;
 import com.example.inventix.model.MovementReason;
 import com.example.inventix.model.Product;
@@ -120,7 +121,7 @@ class StockMovementControllerTest {
     @Test
     void getMovements_returns400_forBadPageSize() throws Exception {
         when(stockMovementService.getMovements(null, null, 0, 1000))
-                .thenThrow(new IllegalArgumentException("size must be between 1 and 500"));
+                .thenThrow(new BadRequestException("size must be between 1 and 500"));
 
         mockMvc.perform(get("/api/stock-movements").param("size", "1000"))
                 .andExpect(status().isBadRequest())

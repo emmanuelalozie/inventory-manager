@@ -342,14 +342,27 @@ class OrderServiceTest {
     }
 
     @Test
-    void deleteOrder_ShouldNotRestoreStock_WhenOrderWasShipped() {
-        sampleOrder.setStatus(OrderStatus.SHIPPED);
+    void deleteOrder_ShouldRefuse_WhenOrderWasShippedOrDelivered() {
+        for (OrderStatus status : List.of(OrderStatus.SHIPPED, OrderStatus.DELIVERED)) {
+            sampleOrder.setStatus(status);
+            when(orderRepository.findById(1L)).thenReturn(Optional.of(sampleOrder));
+
+            assertThrows(InvalidOrderStateException.class, () -> orderService.deleteOrder(1L));
+        }
+
+        verify(orderItemService, never()).deleteOrderItem(anyLong());
+        verify(productService, never()).adjustStock(anyLong(), anyInt(), any(), any(), any());
+        verify(orderRepository, never()).delete(any(Order.class));
+    }
+
+    @Test
+    void deleteOrder_ShouldDeleteCancelledOrder_WithoutRestoringStock() {
+        sampleOrder.setStatus(OrderStatus.CANCELLED);
         when(orderRepository.findById(1L)).thenReturn(Optional.of(sampleOrder));
 
         orderService.deleteOrder(1L);
 
         verify(orderItemService, never()).deleteOrderItem(anyLong());
-        verify(productService, never()).adjustStock(anyLong(), anyInt(), any(), any(), any());
         verify(orderRepository, times(1)).delete(sampleOrder);
     }
 

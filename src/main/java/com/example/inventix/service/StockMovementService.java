@@ -15,7 +15,7 @@ public interface StockMovementService {
     /**
      * One page of movements, newest first. productId and reason are optional filters.
      *
-     * @throws IllegalArgumentException if page is negative or size is not between 1 and {@link #MAX_PAGE_SIZE}
+     * @throws com.example.inventix.exception.BadRequestException if page is negative or size is not between 1 and {@link #MAX_PAGE_SIZE}
      */
     List<StockMovement> getMovements(Long productId, MovementReason reason, int page, int size);
 

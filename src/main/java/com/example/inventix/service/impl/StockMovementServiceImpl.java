@@ -1,5 +1,6 @@
 package com.example.inventix.service.impl;
 
+import com.example.inventix.exception.BadRequestException;
 import com.example.inventix.exception.ProductNotFoundException;
 import com.example.inventix.model.MovementReason;
 import com.example.inventix.model.StockMovement;
@@ -30,10 +31,10 @@ public class StockMovementServiceImpl implements StockMovementService {
     @Override
     public List<StockMovement> getMovements(Long productId, MovementReason reason, int page, int size) {
         if (page < 0) {
-            throw new IllegalArgumentException("page must be 0 or greater");
+            throw new BadRequestException("page must be 0 or greater");
         }
         if (size < 1 || size > MAX_PAGE_SIZE) {
-            throw new IllegalArgumentException("size must be between 1 and " + MAX_PAGE_SIZE);
+            throw new BadRequestException("size must be between 1 and " + MAX_PAGE_SIZE);
         }
         // The query sorts newest first itself, so the page request carries no sort.
         return stockMovementRepository.search(productId, reason, PageRequest.of(page, size));
