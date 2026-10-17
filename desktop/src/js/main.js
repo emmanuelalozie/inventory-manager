@@ -16,6 +16,7 @@ import { initOrders, showOrders } from "./orders.js";
 import { initProduction, showProduction } from "./production.js";
 import { initProducts, showProducts } from "./products.js";
 import { initPurchaseOrders, showPurchaseOrders } from "./purchase-orders.js";
+import { initReports, showReports } from "./reports.js";
 import {
   DEFAULT_LOW_STOCK_THRESHOLD,
   getLowStockThreshold,
@@ -31,6 +32,7 @@ const VIEWS = {
   "purchase-orders": showPurchaseOrders,
   production: showProduction,
   suppliers: showSuppliers,
+  reports: showReports,
   settings: showSettings,
 };
 
@@ -41,6 +43,7 @@ const VIEW_TITLES = {
   "purchase-orders": "Purchase orders",
   production: "Production",
   suppliers: "Suppliers",
+  reports: "Reports",
   settings: "Settings",
 };
 
@@ -210,6 +213,7 @@ function start() {
   initPurchaseOrders();
   initProduction();
   initSuppliers();
+  initReports();
   initSettings();
   window.addEventListener("hashchange", () => route());
   route();

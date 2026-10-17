@@ -115,7 +115,7 @@ function notifyBaseUrlChange(url) {
  */
 async function request(
   path,
-  { method = "GET", body, headers: extraHeaders, timeoutMs = REQUEST_TIMEOUT_MS, withTotal = false } = {}
+  { method = "GET", body, headers: extraHeaders, timeoutMs = REQUEST_TIMEOUT_MS, withTotal = false, asFile = false } = {}
 ) {
   const baseUrl = getBaseUrl();
   const headers = { Accept: "application/json", ...extraHeaders };
@@ -150,6 +150,12 @@ async function request(
     return null;
   }
 
+  // A download: hand back the bytes and the server's file name instead of parsing JSON.
+  if (asFile && response.ok) {
+    const disposition = (response.headers && response.headers.get("Content-Disposition")) || "";
+    return { blob: await response.blob(), fileName: fileNameFrom(disposition) };
+  }
+
   const text = await response.text();
   let data = null;
   if (text) {
@@ -175,6 +181,12 @@ async function request(
 }
 
 const id = (value) => encodeURIComponent(String(value));
+
+/** The file name from a Content-Disposition header such as `attachment; filename="products-2026-10-17.csv"`. */
+export function fileNameFrom(disposition) {
+  const match = /filename="?([^";]+)"?/i.exec(disposition || "");
+  return match ? match[1] : "export.csv";
+}
 
 /** A random key for the Idempotency-Key header. */
 export function newIdempotencyKey() {
@@ -211,8 +223,8 @@ export const productsApi = {
    * One page of products matching q (name, SKU or description), sorted by sort ("name", "quantity,desc", ...).
    * Resolves with { items, total }. page is 0-based.
    */
-  search: ({ q, page = 0, size = LIST_PAGE_SIZE, sort = "name" } = {}) =>
-    request(`/api/products${query({ q, page, size, sort })}`, { withTotal: true }),
+  search: ({ q, categoryId, page = 0, size = LIST_PAGE_SIZE, sort = "name" } = {}) =>
+    request(`/api/products${query({ q, categoryId, page, size, sort })}`, { withTotal: true }),
   lowStock: (threshold = 10) =>
     request(`/api/products/low-stock?threshold=${encodeURIComponent(threshold)}`),
   get: (productId) => request(`/api/products/${id(productId)}`),
@@ -360,3 +372,31 @@ export const restockApi = {
   /** Restocks every ready product that isn't already covered. Resolves with one result per product. */
   restockAll: () => request("/api/reorder-list/restock", { method: "POST" }),
 };
+
+// ---------------------------------------------------------------------------
+// Categories, reports and CSV export (v2 Run 3)
+// ---------------------------------------------------------------------------
+
+export const categoriesApi = {
+  /** All categories by name, each with productCount. */
+  list: () => request("/api/categories"),
+  create: (name) => request("/api/categories", { method: "POST", body: { name } }),
+  rename: (categoryId, name, version) =>
+    request(`/api/categories/${id(categoryId)}`, { method: "PUT", body: { name, version } }),
+  remove: (categoryId) => request(`/api/categories/${id(categoryId)}`, { method: "DELETE" }),
+};
+
+/** from and to are "YYYY-MM-DD" dates, both included; leave either out for an open range. */
+export const reportsApi = {
+  stockValue: () => request("/api/reports/stock-value"),
+  movements: ({ from, to } = {}) => request(`/api/reports/movements${query({ from, to })}`),
+  topSellers: ({ from, to, limit = 10 } = {}) => request(`/api/reports/top-sellers${query({ from, to, limit })}`),
+};
+
+export const EXPORTS = ["products", "stock-value", "stock-movements", "top-sellers"];
+
+export const exportApi = {
+  /** Downloads /api/export/{name}.csv. Resolves with { blob, fileName }. */
+  csv: (name, params = {}) => request(`/api/export/${encodeURIComponent(name)}.csv${query(params)}`, { asFile: true }),
+};
+

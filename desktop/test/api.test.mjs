@@ -10,6 +10,8 @@ import {
   MOVEMENTS_PAGE_SIZE,
   LIST_PAGE_SIZE,
   backupApi,
+  exportApi,
+  fileNameFrom,
   newIdempotencyKey,
   ordersApi,
   productsApi,
@@ -202,5 +204,35 @@ test("restockApi posts to the product and reorder-list endpoints", async (t) => 
       ["POST", `${DEFAULT_BASE_URL}/api/reorder-list/restock`],
     ]
   );
+});
+
+test("fileNameFrom reads the name from Content-Disposition", () => {
+  assert.equal(fileNameFrom('attachment; filename="products-2026-10-17.csv"'), "products-2026-10-17.csv");
+  assert.equal(fileNameFrom("attachment; filename=top.csv"), "top.csv");
+  assert.equal(fileNameFrom(""), "export.csv");
+});
+
+test("exportApi.csv returns the file instead of parsing JSON", async (t) => {
+  const urls = [];
+  const original = globalThis.fetch;
+  globalThis.fetch = async (url) => {
+    urls.push(url);
+    return {
+      status: 200,
+      ok: true,
+      statusText: "OK",
+      headers: { get: (name) => (name === "Content-Disposition" ? 'attachment; filename="stock-movements-2026-10-17.csv"' : null) },
+      blob: async () => "csv-bytes",
+      text: async () => "id,created_at\r\n",
+    };
+  };
+  t.after(() => {
+    globalThis.fetch = original;
+  });
+
+  const file = await exportApi.csv("stock-movements", { from: "2026-10-01", to: undefined });
+
+  assert.equal(urls[0], `${DEFAULT_BASE_URL}/api/export/stock-movements.csv?from=2026-10-01`);
+  assert.deepEqual(file, { blob: "csv-bytes", fileName: "stock-movements-2026-10-17.csv" });
 });
 

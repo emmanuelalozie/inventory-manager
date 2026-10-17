@@ -1214,3 +1214,12 @@ textarea.invalid {
   margin: 0;
   white-space: pre-wrap;
 }
+
+.report-range {
+  align-items: flex-end;
+}
+
+.report-range .field {
+  min-width: 9rem;
+}
+

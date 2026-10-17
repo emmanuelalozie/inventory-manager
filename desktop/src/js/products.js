@@ -1,6 +1,6 @@
 // Products view: list/search, create, edit, delete, stock adjustments and stock history.
 
-import { ApiError, MOVEMENTS_PAGE_SIZE, productsApi, suppliersApi } from "./api.js";
+import { ApiError, MOVEMENTS_PAGE_SIZE, categoriesApi, productsApi, suppliersApi } from "./api.js";
 import {
   NOTE_MAX_LENGTH,
   countLabel,
@@ -37,6 +37,8 @@ let products = [];
 let total = 0;
 let nextPage = 0;
 let searchTerm = "";
+let categoryFilter = "";
+let categoryNames = new Map(); // id -> name, for the table
 let loadRequest = 0; // ignores responses to searches that were replaced by a newer one
 
 const tableEl = () => document.getElementById("products-table");
@@ -158,6 +160,12 @@ export function initProducts() {
 
   document.getElementById("products-new").addEventListener("click", () => openProductDialog(null));
   document.getElementById("products-refresh").addEventListener("click", () => loadProducts());
+  document.getElementById("products-categories").addEventListener("click", () => openCategoriesDialog());
+  const categorySelect = document.getElementById("products-category-filter");
+  categorySelect.addEventListener("change", () => {
+    categoryFilter = categorySelect.value;
+    loadProducts();
+  });
 
   tableEl().addEventListener("click", (event) => {
     const button = event.target.closest("button[data-action]");
@@ -179,6 +187,18 @@ export function showProducts() {
   return loadProducts();
 }
 
+/** Refreshes the category names and the category filter's options, keeping the current choice. */
+async function loadCategoryNames() {
+  const categories = await categoriesApi.list();
+  categoryNames = new Map(categories.map((c) => [c.id, c.name]));
+  const select = document.getElementById("products-category-filter");
+  select.innerHTML =
+    `<option value="">All categories</option>` +
+    categories.map((c) => `<option value="${escapeHtml(c.id)}">${escapeHtml(c.name)}</option>`).join("");
+  if (categoryFilter && !categoryNames.has(Number(categoryFilter))) categoryFilter = "";
+  select.value = categoryFilter;
+}
+
 /** Loads the first page of the current search, or with more, the next page after the rows already shown. */
 async function loadProducts({ more = false } = {}) {
   const requestId = ++loadRequest;
@@ -187,7 +207,8 @@ async function loadProducts({ more = false } = {}) {
   if (more && moreButton) moreButton.disabled = true;
   if (!more && !products.length) renderPlaceholder(tableEl(), "loading", "Loading products…");
   try {
-    const result = await productsApi.search({ q: searchTerm, page });
+    if (!more) await loadCategoryNames();
+    const result = await productsApi.search({ q: searchTerm, categoryId: categoryFilter || undefined, page });
     if (requestId !== loadRequest) return;
     products = more ? [...products, ...result.items] : result.items;
     total = result.total;
@@ -230,7 +251,10 @@ function renderTable() {
           <div class="cell-title">${escapeHtml(p.name)}</div>
           ${p.description ? `<div class="cell-sub">${escapeHtml(p.description)}</div>` : ""}
         </td>
-        <td><code>${escapeHtml(p.sku)}</code></td>
+        <td>
+          <code>${escapeHtml(p.sku)}</code>
+          ${p.categoryId != null ? `<div class="cell-sub">${escapeHtml(categoryNames.get(p.categoryId) || "")}</div>` : ""}
+        </td>
         <td class="num">${formatMoney(p.price)}</td>
         <td class="num">
           ${stockBadge(p.quantity, threshold)}
@@ -282,7 +306,7 @@ function replaceProduct(updated) {
 // Create / edit
 // ---------------------------------------------------------------------------
 
-function productFormBody(product, suppliers) {
+function productFormBody(product, suppliers, categories) {
   const p = product || {};
   const value = (v) => escapeHtml(v ?? "");
   const source = p.source || "BUY";
@@ -290,6 +314,11 @@ function productFormBody(product, suppliers) {
     `<option value="">No supplier</option>` +
     suppliers
       .map((s) => `<option value="${escapeHtml(s.id)}" ${s.id === p.supplierId ? "selected" : ""}>${escapeHtml(s.name)}</option>`)
+      .join("");
+  const categoryOptions =
+    `<option value="">No category</option>` +
+    categories
+      .map((c) => `<option value="${escapeHtml(c.id)}" ${c.id === p.categoryId ? "selected" : ""}>${escapeHtml(c.name)}</option>`)
       .join("");
   return `
     <div class="form-grid">
@@ -323,6 +352,17 @@ function productFormBody(product, suppliers) {
         <span class="hint">Recorded in the stock history as “Initial stock”.</span>
       </label>`
       }
+      <label class="field">
+        <span class="field-label">Category</span>
+        <select name="categoryId">${categoryOptions}</select>
+        <span class="field-error" data-error-for="categoryId"></span>
+      </label>
+      <label class="field">
+        <span class="field-label">Unit cost</span>
+        <input name="unitCost" type="number" min="0" step="0.01" inputmode="decimal" value="${value(p.unitCost)}" placeholder="Optional">
+        <span class="field-error" data-error-for="unitCost"></span>
+        <span class="hint">What one unit costs you. Updated when a purchase order with a cost is received.</span>
+      </label>
       <label class="field span-2">
         <span class="field-label">Description</span>
         <textarea name="description" maxlength="1000" rows="3">${value(p.description)}</textarea>
@@ -405,6 +445,13 @@ function readProductForm(form, editing) {
   const reorderQuantity = optionalWhole("reorderQuantity", 1);
   const source = f.source.value === "MAKE" ? "MAKE" : "BUY";
   const supplierId = source === "BUY" && f.supplierId.value ? Number(f.supplierId.value) : null;
+  const categoryId = f.categoryId.value ? Number(f.categoryId.value) : null;
+  const unitCostText = f.unitCost.value.trim();
+  let unitCost = null;
+  if (f.unitCost.validity.badInput) fail("unitCost", "Enter a number, e.g. 4.20");
+  else if (unitCostText && !/^\d+(\.\d{1,2})?$/.test(unitCostText)) fail("unitCost", "Use a number of 0 or more with at most 2 decimals");
+  else if (unitCostText && Number(unitCostText) > MAX_PRICE) fail("unitCost", "Unit cost is too large");
+  else if (unitCostText) unitCost = Number(unitCostText);
 
   if (!editing) {
     if (f.quantity.validity.badInput) fail("quantity", "Enter a whole number");
@@ -424,6 +471,8 @@ function readProductForm(form, editing) {
     supplierId,
     reorderPoint,
     reorderQuantity,
+    categoryId,
+    unitCost,
   };
 }
 
@@ -432,16 +481,17 @@ async function openProductDialog(product) {
   // Sent back on save so the backend rejects the edit if someone else changed the product meanwhile.
   let loadedVersion = editing ? product.version : null;
   let suppliers = [];
+  let categories = [];
   try {
-    suppliers = await suppliersApi.list();
+    [suppliers, categories] = await Promise.all([suppliersApi.list(), categoriesApi.list()]);
   } catch (error) {
-    showError(error, "Could not load suppliers");
+    showError(error, "Could not load suppliers and categories");
     return;
   }
   const saved = await openDialog({
     title: editing ? `Edit ${product.name}` : "New product",
     submitLabel: editing ? "Save changes" : "Create product",
-    body: productFormBody(product, suppliers),
+    body: productFormBody(product, suppliers, categories),
     onOpen(form) {
       const supplierField = form.querySelector("[data-supplier-field]");
       form.elements.source.addEventListener("change", () => {
@@ -591,3 +641,123 @@ async function deleteProduct(product) {
     if (error instanceof ApiError && error.status === 404) loadProducts();
   }
 }
+
+// ---------------------------------------------------------------------------
+// Categories
+// ---------------------------------------------------------------------------
+
+/** Lists categories with their product counts; add, rename and delete them. */
+async function openCategoriesDialog() {
+  let categories = [];
+  const render = (container) => {
+    if (!categories.length) {
+      renderPlaceholder(container, "empty", "No categories yet.");
+      return;
+    }
+    container.innerHTML = `
+      <div class="table-wrap">
+        <table class="table table-compact">
+          <thead><tr><th>Name</th><th class="num">Products</th><th></th></tr></thead>
+          <tbody>${categories
+            .map(
+              (c) => `
+              <tr>
+                <td>${escapeHtml(c.name)}</td>
+                <td class="num">${escapeHtml(formatNumber(c.productCount))}</td>
+                <td class="row-actions">
+                  <button type="button" class="button button-small" data-action="rename" data-id="${escapeHtml(c.id)}">Rename</button>
+                  <button type="button" class="button button-small button-danger-ghost" data-action="delete" data-id="${escapeHtml(c.id)}"
+                    ${c.productCount ? `disabled title="Move its products to another category first"` : ""}>Delete</button>
+                </td>
+              </tr>`
+            )
+            .join("")}</tbody>
+        </table>
+      </div>`;
+  };
+  await openDialog({
+    title: "Categories",
+    cancelLabel: "Close",
+    body: `
+      <div class="line-builder">
+        <label class="field grow">
+          <span class="field-label">New category</span>
+          <input name="newName" maxlength="100" autocomplete="off" placeholder="e.g. Cables">
+          <span class="field-error" data-error-for="newName"></span>
+        </label>
+        <button type="button" class="button button-primary" data-action="add">Add</button>
+      </div>
+      <div data-categories></div>`,
+    async onOpen(form) {
+      const container = form.querySelector("[data-categories]");
+      const reload = async () => {
+        try {
+          categories = await categoriesApi.list();
+          render(container);
+        } catch (error) {
+          showLoadError(container, error, "Could not load categories");
+        }
+      };
+      const add = async () => {
+        const name = form.elements.newName.value.trim();
+        if (!name) {
+          setFieldError(form, "newName", "Enter a name");
+          return;
+        }
+        try {
+          await categoriesApi.create(name);
+          form.elements.newName.value = "";
+          setFieldError(form, "newName", "");
+          await reload();
+        } catch (error) {
+          if (error instanceof ApiError && error.status === 409) setFieldError(form, "newName", error.message);
+          else showError(error, "Could not add the category");
+        }
+      };
+      form.elements.newName.addEventListener("keydown", (event) => {
+        if (event.key === "Enter") {
+          event.preventDefault();
+          add();
+        }
+      });
+      form.addEventListener("click", async (event) => {
+        const button = event.target.closest("button[data-action]");
+        if (!button) return;
+        if (button.dataset.action === "add") return add();
+        const category = categories.find((c) => String(c.id) === button.dataset.id);
+        if (!category) return;
+        try {
+          if (button.dataset.action === "rename") {
+            const renamed = await openDialog({
+              title: `Rename “${category.name}”`,
+              submitLabel: "Rename",
+              body: `
+                <label class="field">
+                  <span class="field-label">Name</span>
+                  <input name="name" maxlength="100" value="${escapeHtml(category.name)}" autocomplete="off">
+                  <span class="field-error" data-error-for="name"></span>
+                </label>`,
+              onSubmit(renameForm) {
+                const name = renameForm.elements.name.value.trim();
+                if (!name) {
+                  setFieldError(renameForm, "name", "Enter a name");
+                  return false;
+                }
+                return categoriesApi.rename(category.id, name, category.version);
+              },
+            });
+            if (!renamed) return;
+          } else if (button.dataset.action === "delete") {
+            await categoriesApi.remove(category.id);
+          }
+          await reload();
+        } catch (error) {
+          showError(error, `Could not change “${category.name}”`);
+        }
+      });
+      await reload();
+    },
+  });
+  loadProducts(); // names or counts may have changed
+}
+

@@ -120,7 +120,19 @@ export function describeBackup(result) {
  * because stock only changes through the stock endpoint (which records a movement).
  */
 export function productRequestBody(
-  { name, sku, description, price, quantity, source = "BUY", supplierId = null, reorderPoint = null, reorderQuantity = null },
+  {
+    name,
+    sku,
+    description,
+    price,
+    quantity,
+    source = "BUY",
+    supplierId = null,
+    reorderPoint = null,
+    reorderQuantity = null,
+    categoryId = null,
+    unitCost = null,
+  },
   { editing = false, version } = {}
 ) {
   // PUT replaces the sourcing fields too, so they are always sent. Made products have no supplier.
@@ -133,6 +145,8 @@ export function productRequestBody(
     supplierId: source === "MAKE" ? null : supplierId,
     reorderPoint,
     reorderQuantity,
+    categoryId,
+    unitCost,
   };
   if (!editing) body.quantity = quantity;
   if (editing && version != null) body.version = version;
@@ -156,3 +170,15 @@ export function describeRestockResults(results) {
     lines: list.map((r) => `${r.sku}: ${r.message}`),
   };
 }
+
+/** "YYYY-MM-DD" for a Date, in local time (what the date inputs and the API use). */
+export function isoDate(date) {
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+}
+
+/** The default report range: the first day of this month up to today. */
+export function defaultReportRange(today = new Date()) {
+  return { from: isoDate(new Date(today.getFullYear(), today.getMonth(), 1)), to: isoDate(today) };
+}
+
