@@ -256,4 +256,30 @@ class InventixApplicationTests {
                 .andExpect(jsonPath("$", hasSize(1)))
                 .andExpect(jsonPath("$[0].lines[0].quantityReceived").value(15));
     }
+
+    @Test
+    void productionRun_overHttp_addsStockWhenCompleted() throws Exception {
+        int productId = postForId("/api/products", "{\"name\":\"E2E Table\",\"sku\":\"E2E-TABLE\",\"price\":99,"
+                + "\"quantity\":0,\"source\":\"MAKE\"}");
+        String created = mockMvc.perform(post("/api/production-runs").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"productId\":" + productId + ",\"quantity\":4}"))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.status").value("PLANNED"))
+                .andExpect(jsonPath("$.productSku").value("E2E-TABLE"))
+                .andReturn().getResponse().getContentAsString();
+        int runId = objectMapper.readTree(created).get("id").asInt();
+
+        mockMvc.perform(patch("/api/production-runs/{id}/status", runId).contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"status\":\"COMPLETED\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("COMPLETED"));
+
+        mockMvc.perform(get("/api/products/{id}", productId))
+                .andExpect(jsonPath("$.quantity").value(4))
+                .andExpect(jsonPath("$.source").value("MAKE"));
+        mockMvc.perform(get("/api/products/{id}/movements", productId))
+                .andExpect(jsonPath("$[0].reason").value("PRODUCTION"))
+                .andExpect(jsonPath("$[0].productionRunId").value(runId));
+        mockMvc.perform(delete("/api/production-runs/{id}", runId)).andExpect(status().isConflict());
+    }
 }

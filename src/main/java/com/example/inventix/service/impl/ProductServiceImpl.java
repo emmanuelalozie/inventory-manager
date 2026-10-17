@@ -170,6 +170,9 @@ public class ProductServiceImpl implements ProductService {
         if (productRepository.isOnPurchaseOrder(id)) {
             throw new ProductInUseException("Product " + id + " is on purchase orders and cannot be deleted");
         }
+        if (productRepository.isOnProductionRun(id)) {
+            throw new ProductInUseException("Product " + id + " has production runs and cannot be deleted");
+        }
         // The ledger rows point at the product (foreign key), so its history goes with it.
         stockMovementRepository.deleteByProductId(id);
         productRepository.deleteById(id);
@@ -179,6 +182,7 @@ public class ProductServiceImpl implements ProductService {
                                 StockReference reference) {
         StockMovement movement = new StockMovement(product, delta, reason, note, reference.orderId());
         movement.setPurchaseOrderId(reference.purchaseOrderId());
+        movement.setProductionRunId(reference.productionRunId());
         stockMovementRepository.save(movement);
     }
 

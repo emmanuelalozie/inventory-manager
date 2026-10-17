@@ -20,6 +20,7 @@ public record StockMovementResponse(
         String note,
         Long orderId,
         Long purchaseOrderId,
+        Long productionRunId,
         Long locationId,
         LocalDateTime createdAt) {
 
@@ -35,6 +36,7 @@ public record StockMovementResponse(
                 movement.getNote(),
                 movement.getOrderId(),
                 movement.getPurchaseOrderId(),
+                movement.getProductionRunId(),
                 movement.getLocationId(),
                 movement.getCreatedAt());
     }

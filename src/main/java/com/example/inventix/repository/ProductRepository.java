@@ -20,6 +20,9 @@ public interface ProductRepository extends JpaRepository<Product, Long> {
     @Query("select count(l) > 0 from PurchaseOrderLine l where l.product.id = :productId")
     boolean isOnPurchaseOrder(@Param("productId") Long productId);
 
+    @Query("select count(r) > 0 from ProductionRun r where r.product.id = :productId")
+    boolean isOnProductionRun(@Param("productId") Long productId);
+
     List<Product> findByQuantityLessThanEqualOrderByQuantityAsc(Integer threshold);
 
     /**
