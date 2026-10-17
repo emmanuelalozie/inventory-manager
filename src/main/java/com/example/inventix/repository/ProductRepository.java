@@ -15,6 +15,8 @@ public interface ProductRepository extends JpaRepository<Product, Long> {
 
     boolean existsBySkuAndIdNot(String sku, Long id);
 
+    boolean existsBySupplierId(Long supplierId);
+
     List<Product> findByQuantityLessThanEqualOrderByQuantityAsc(Integer threshold);
 
     /**

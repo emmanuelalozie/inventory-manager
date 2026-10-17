@@ -8,9 +8,11 @@ import com.example.inventix.exception.ProductNotFoundException;
 import com.example.inventix.exception.QuantityChangeNotAllowedException;
 import com.example.inventix.model.MovementReason;
 import com.example.inventix.model.Product;
+import com.example.inventix.model.ProductSource;
 import com.example.inventix.model.StockMovement;
 import com.example.inventix.repository.OrderItemRepository;
 import com.example.inventix.repository.ProductRepository;
+import com.example.inventix.repository.SupplierRepository;
 import com.example.inventix.repository.StockMovementRepository;
 import com.example.inventix.service.Paging;
 import com.example.inventix.service.ProductService;
@@ -35,13 +37,15 @@ public class ProductServiceImpl implements ProductService {
     private final ProductRepository productRepository;
     private final OrderItemRepository orderItemRepository;
     private final StockMovementRepository stockMovementRepository;
+    private final SupplierRepository supplierRepository;
 
     @Autowired
     public ProductServiceImpl(ProductRepository productRepository, OrderItemRepository orderItemRepository,
-                              StockMovementRepository stockMovementRepository) {
+                              StockMovementRepository stockMovementRepository, SupplierRepository supplierRepository) {
         this.productRepository = productRepository;
         this.orderItemRepository = orderItemRepository;
         this.stockMovementRepository = stockMovementRepository;
+        this.supplierRepository = supplierRepository;
     }
 
     @Override
@@ -49,6 +53,7 @@ public class ProductServiceImpl implements ProductService {
         product.setId(null); // always insert, never overwrite an existing product
         product.setVersion(null); // a client-sent version would make Spring Data treat the product as existing
         product.setSku(normalizeSku(product.getSku()));
+        checkSourcing(product);
         if (productRepository.existsBySku(product.getSku())) {
             throw new DuplicateSkuException("A product with SKU '" + product.getSku() + "' already exists");
         }
@@ -80,6 +85,7 @@ public class ProductServiceImpl implements ProductService {
         }
 
         productDetails.setSku(normalizeSku(productDetails.getSku()));
+        checkSourcing(productDetails);
         if (productRepository.existsBySkuAndIdNot(productDetails.getSku(), id)) {
             throw new DuplicateSkuException("A product with SKU '" + productDetails.getSku() + "' already exists");
         }
@@ -88,6 +94,10 @@ public class ProductServiceImpl implements ProductService {
         existingProduct.setSku(productDetails.getSku());
         existingProduct.setDescription(productDetails.getDescription());
         existingProduct.setPrice(productDetails.getPrice());
+        existingProduct.setSource(productDetails.getSource());
+        existingProduct.setSupplierId(productDetails.getSupplierId());
+        existingProduct.setReorderPoint(productDetails.getReorderPoint());
+        existingProduct.setReorderQuantity(productDetails.getReorderQuantity());
 
         return productRepository.save(existingProduct);
     }
@@ -172,5 +182,22 @@ public class ProductServiceImpl implements ProductService {
     // Makes % and _ in a search term match literally (the queries use '\' as the LIKE escape character).
     private static String escapeLike(String text) {
         return text.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_");
+    }
+
+    // Made products have no supplier, and a supplier must exist. A missing source means BUY.
+    private void checkSourcing(Product product) {
+        if (product.getSource() == null) {
+            product.setSource(ProductSource.BUY);
+        }
+        Long supplierId = product.getSupplierId();
+        if (supplierId == null) {
+            return;
+        }
+        if (product.getSource() == ProductSource.MAKE) {
+            throw new BadRequestException("Products made in-house have no supplier; leave supplierId out");
+        }
+        if (!supplierRepository.existsById(supplierId)) {
+            throw new BadRequestException("Supplier " + supplierId + " doesn't exist");
+        }
     }
 }

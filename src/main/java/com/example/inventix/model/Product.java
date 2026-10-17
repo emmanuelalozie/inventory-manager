@@ -9,6 +9,8 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 import lombok.ToString;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -48,6 +50,23 @@ public class Product {
     @PositiveOrZero(message = "Quantity must be zero or greater")
     @Column(nullable = false)
     private Integer quantity;
+
+    // Replenishment: bought from supplierId or made in-house. Restock acts when quantity <= reorderPoint.
+    @Enumerated(EnumType.STRING)
+    @JdbcTypeCode(SqlTypes.VARCHAR)
+    @Column(nullable = false, length = 10)
+    private ProductSource source = ProductSource.BUY;
+
+    // A plain id (with a foreign key in the schema) rather than a relation, so mapping a product to JSON after
+    // the transaction never needs to load the supplier.
+    @Column(name = "supplier_id")
+    private Long supplierId;
+
+    @Column(name = "reorder_point")
+    private Integer reorderPoint;
+
+    @Column(name = "reorder_quantity")
+    private Integer reorderQuantity;
 
     @Column(name = "created_at", updatable = false)
     private LocalDateTime createdAt;

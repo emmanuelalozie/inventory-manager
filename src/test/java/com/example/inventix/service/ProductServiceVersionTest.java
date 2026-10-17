@@ -4,6 +4,7 @@ import com.example.inventix.model.Product;
 import com.example.inventix.repository.OrderItemRepository;
 import com.example.inventix.repository.ProductRepository;
 import com.example.inventix.repository.StockMovementRepository;
+import com.example.inventix.repository.SupplierRepository;
 import com.example.inventix.service.impl.ProductServiceImpl;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -38,6 +39,9 @@ class ProductServiceVersionTest {
 
     @Mock
     private StockMovementRepository stockMovementRepository;
+
+    @Mock
+    private SupplierRepository supplierRepository;
 
     @InjectMocks
     private ProductServiceImpl productService;

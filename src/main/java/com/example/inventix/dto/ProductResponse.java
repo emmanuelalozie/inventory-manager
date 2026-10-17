@@ -1,6 +1,7 @@
 package com.example.inventix.dto;
 
 import com.example.inventix.model.Product;
+import com.example.inventix.model.ProductSource;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -17,6 +18,10 @@ public record ProductResponse(
         String description,
         BigDecimal price,
         Integer quantity,
+        ProductSource source,
+        Long supplierId,
+        Integer reorderPoint,
+        Integer reorderQuantity,
         LocalDateTime createdAt,
         LocalDateTime updatedAt,
         Long version) {
@@ -29,6 +34,10 @@ public record ProductResponse(
                 product.getDescription(),
                 product.getPrice(),
                 product.getQuantity(),
+                product.getSource(),
+                product.getSupplierId(),
+                product.getReorderPoint(),
+                product.getReorderQuantity(),
                 product.getCreatedAt(),
                 product.getUpdatedAt(),
                 product.getVersion());
