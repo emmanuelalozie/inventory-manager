@@ -251,8 +251,12 @@ consider adding `javascript-typescript` for `desktop/src/`.
 
 ### O-11. No OpenAPI / Swagger UI
 
-**Status:** open.
-The old README pointed to `/api/swagger`, which never existed. The API is documented by hand in `docs/API.md`.
+**Status:** fixed. `springdoc-openapi-starter-webmvc-ui` 2.8.17 (the line for Spring Boot 3.5) serves the
+generated description at `/v3/api-docs` and Swagger UI at `/swagger-ui.html`, with the title set in
+`config/OpenApiConfig.java`. Like the API, they are only reachable from this machine. `docs/API.md` stays the
+reference for the behaviour rules. Covered by two tests in `InventixApplicationTests`.
+
+**Was:** the old README pointed to `/api/swagger`, which never existed. The API is documented by hand in `docs/API.md`.
 
 **Recommendation:** add `springdoc-openapi-starter-webmvc-ui` (pick the version that matches the Spring Boot
 version) to serve `/swagger-ui.html` and `/v3/api-docs`, and keep `docs/API.md` for the behaviour rules.

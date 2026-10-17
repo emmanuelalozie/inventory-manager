@@ -208,7 +208,9 @@ or H2, read
 ## API summary
 
 The full contract, including JSON shapes, validation rules, stock rules and error codes, is in
-**[docs/API.md](docs/API.md)**. There is no Swagger/OpenAPI UI yet.
+**[docs/API.md](docs/API.md)**. While the backend is running, Swagger UI at
+**`http://localhost:8080/swagger-ui.html`** lists every endpoint and lets you try them; the OpenAPI document is at
+`http://localhost:8080/v3/api-docs`.
 
 | Method | Path | Description |
 |---|---|---|
@@ -283,8 +285,7 @@ The [review](docs/REVIEW.md) has the full list with recommendations. The main po
    reorder points and a Restock action.
 2. **v2 Run 3:** categories, unit cost, reports and CSV export.
 3. Plan the migration to Spring Boot 4.x, and the H2 2.3 upgrade (export and re-import, see O-13).
-4. OpenAPI/Swagger docs.
-5. Later: ship backend and desktop as one app, multi-location stock, demand forecasting.
+4. Later: ship backend and desktop as one app, multi-location stock, demand forecasting.
 
 ## Contributing
 

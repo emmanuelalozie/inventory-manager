@@ -13,6 +13,8 @@ This is the contract between the Inventix backend and the desktop UI.
 - **Database:** H2 file database `jdbc:h2:file:./data/inventix`, kept between restarts. The schema is managed by
   Flyway. Five sample products are added on the first start only, when there are no products (turn this off with
   `inventix.seed-data=false`).
+- **OpenAPI:** Swagger UI at `http://localhost:8080/swagger-ui.html`, the generated document at
+  `http://localhost:8080/v3/api-docs`. This file remains the reference for the rules behind each endpoint.
 - **H2 console:** `http://localhost:8080/h2-console` (JDBC URL `jdbc:h2:file:./data/inventix`, user `sa`, no
   password).
 
