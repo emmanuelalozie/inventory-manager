@@ -73,6 +73,11 @@ Paths below are relative to `src/main/java/com/example/inventix/` unless they st
 | F-10 | **v2:** `POST /api/backup` writes an H2 `BACKUP TO` zip to `./backups`; **Back up now** button in desktop Settings. | `controller/BackupController.java`, `service/impl/BackupServiceImpl.java`, `dto/BackupResponse.java`, `desktop/src/js/main.js` |
 | F-11 | **v2:** Stock movement ledger (`stock_movements`). Every stock change writes a row in the same transaction: `SALE`, `CANCEL`, `ADJUSTMENT` (note required); `RECEIPT` and `PRODUCTION` are reserved for Run 2. Read with `GET /api/products/{id}/movements` and `GET /api/stock-movements`. Desktop: note field on the stock dialog and a History window per product. | `model/StockMovement.java`, `model/MovementReason.java`, `service/impl/ProductServiceImpl.java`, `controller/StockMovementController.java`, `V2__stock_movements.sql`, `desktop/src/js/products.js` |
 | F-12 | **v2:** Server binds to `127.0.0.1` only. No authentication, by design (see O-2). | `src/main/resources/application.properties` |
+| F-13 | **v2 Run 2:** Suppliers (`/api/suppliers`) and per-product sourcing: `source` (`BUY`/`MAKE`), `supplierId`, `reorderPoint`, `reorderQuantity` (migration `V4`). A supplier used by products or purchase orders can't be deleted. | `model/Supplier.java`, `model/ProductSource.java`, `service/impl/SupplierServiceImpl.java`, `controller/SupplierController.java`, `V4__suppliers_and_sourcing.sql` |
+| F-14 | **v2 Run 2:** Purchase orders with partial receipts (`/api/purchase-orders`, migration `V5`). `DRAFT` → `ORDERED` → `PARTIALLY_RECEIVED` → `RECEIVED`, plus `CLOSED` and `CANCELLED`. Receipts never exceed what is outstanding, are checked as a whole before booking, write `RECEIPT` movements with `purchaseOrderId`, and always bump the order's version so two receipts at once conflict instead of double-booking. | `model/PurchaseOrder*.java`, `service/impl/PurchaseOrderServiceImpl.java`, `controller/PurchaseOrderController.java`, `V5__purchase_orders.sql` |
+| F-15 | **v2 Run 2:** Production runs (`/api/production-runs`, migration `V6`). `PLANNED` → `COMPLETED` adds stock with a `PRODUCTION` movement (`productionRunId`); runs don't consume components. | `model/ProductionRun*.java`, `service/impl/ProductionRunServiceImpl.java`, `controller/ProductionRunController.java`, `V6__production_runs.sql` |
+| F-16 | **v2 Run 2:** Reorder list (`GET /api/reorder-list`, with quantity on order and what is missing) and Restock (`POST /api/products/{id}/restock`, `POST /api/reorder-list/restock`): adds to the supplier's draft purchase order or plans a production run, reusing an existing draft or planned run. | `service/impl/RestockServiceImpl.java`, `controller/RestockController.java` |
+| F-17 | **v2 Run 2:** Desktop Suppliers, Purchase orders (draft editor, receive dialog) and Production views; Restocking section in the product form; Reorder card with Restock and Restock all on the dashboard; history links to purchase orders and runs. | `desktop/src/js/suppliers.js`, `desktop/src/js/purchase-orders.js`, `desktop/src/js/production.js`, `desktop/src/js/dashboard.js`, `desktop/src/js/products.js` |
 
 **Tests added or updated** (`src/test/java/com/example/inventix/`):
 `controller/ProductControllerTest`, `controller/OrderControllerTest` (new), `service/ProductServiceTest`,
@@ -315,9 +320,9 @@ single app (Tauri sidecar), and log the resolved database path on startup.
 
 ### O-16. Ledger follow-ups
 
-**Status:** open, for v2 Run 2.
-- `ProductService.adjustStock` has an `orderId` parameter but no `purchaseOrderId` yet. Purchase-order receipts
-  (`RECEIPT`) and production runs (`PRODUCTION`) need it, plus their own endpoints.
+**Status:** partly done in v2 Run 2.
+- *Done in Run 2:* `ProductService.changeStock` takes a `StockReference` (order, purchase order or production
+  run), and receipts and production runs write `RECEIPT` and `PRODUCTION` movements through it.
 - `orderId` on a movement has no foreign key on purpose, so it can point to a deleted `PENDING` order. The desktop
   History window then shows "Could not load order" when the link is opened.
 - Deleting a product also deletes its movements. If history must survive deletes, switch to archiving products
@@ -328,11 +333,13 @@ single app (Tauri sidecar), and log the resolved database path on startup.
 ## 5. Roadmap
 
 Done in v2 Run 1: persistent storage, backups, local-only access, response DTOs and the stock movement ledger.
+Done in v2 Run 2: suppliers, purchase orders with partial receipts, production runs, buy/make source, reorder
+points and the Restock action (F-13 to F-17).
 
 Still planned:
 
-- **Run 2:** suppliers and purchase orders (`RECEIPT` movements), production runs (`PRODUCTION` movements), source
-  per product (buy or make), per-product reorder point and quantity, and a Restock action
+- **Run 2 follow-ups:** bills of materials (a production run that uses up components), a purchase order PDF or
+  email to send to the supplier, and partial cancellation of a single line
 - **Run 3:** categories, unit cost, reports (stock value, movements by date range, top sellers) and CSV export
 - **Later:** ship backend and desktop as one app (Tauri sidecar with a bundled Java runtime), multi-location stock,
   demand forecasting

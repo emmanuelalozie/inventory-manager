@@ -5,13 +5,19 @@ JavaScript. There is no framework, bundler or TypeScript: the files in `src\` ar
 
 It covers:
 
-- **Dashboard:** product and order counts, stock value, a low-stock list with a quick restock button, orders by
-  status and recent orders.
+- **Dashboard:** product and order counts, stock value, a **Reorder** card (products at or below their reorder
+  point, with **Restock** and **Restock all**), a low-stock list with a quick stock adjustment, orders by status and
+  recent orders.
 - **Products:** search, create, edit, delete and adjust stock, with form checks that match the backend rules.
-  Every stock adjustment needs a note. Editing a product never changes its stock; use the Stock button.
+  Every stock adjustment needs a note. Editing a product never changes its stock; use the Stock button. The
+  Restocking section sets whether the product is bought or made, its supplier, reorder point and reorder quantity.
   The History button lists the product's stock movements (date, reason, change, note, order), newest first.
 - **Orders:** list and filter by status, create an order from a product picker, view an order's items and total,
   add items, change item quantities, remove items, change the status (ship, deliver, cancel) and delete orders.
+- **Suppliers:** list, create, edit and delete suppliers.
+- **Purchase orders:** list and filter by status or supplier, draft a purchase order with several lines, mark it as
+  ordered, receive what arrived (in parts), close or cancel it, and delete drafts.
+- **Production:** plan, change, complete (adds the stock) or cancel production runs.
 - **Settings:** the backend URL (default `http://localhost:8080`) and the low-stock threshold, saved in the
   app's local storage, plus a connection test and a **Back up now** button that saves a `.zip` copy of the
   database in the backend's `backups\` folder and shows its file name, path and size. Restoring is manual (see

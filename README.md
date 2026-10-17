@@ -4,8 +4,9 @@
 REST API for products, stock levels and orders, and a lightweight desktop app (Tauri 2 with plain HTML, CSS and
 JavaScript) sits on top of it.
 
-The project is at **v2 Run 1**: data is kept in an H2 file database with Flyway migrations, the database can be
-backed up from the desktop app, and every stock change is recorded in a stock movement ledger. Inventix is built
+The project is at **v2 Run 2**: data is kept in an H2 file database with Flyway migrations, the database can be
+backed up from the desktop app, every stock change is recorded in a stock movement ledger, and stock is
+replenished through suppliers and purchase orders or in-house production runs. Inventix is built
 for one user on one machine: the API only accepts local connections and has no login. See
 [Known limitations and roadmap](#known-limitations-and-roadmap) and the full [review](docs/REVIEW.md).
 
@@ -18,6 +19,18 @@ for one user on one machine: the API only accepts local connections and has no l
 - Stock movement ledger: every stock change (orders, cancellations, manual adjustments, starting stock) writes a
   movement with a reason (`SALE`, `CANCEL`, `RECEIPT`, `PRODUCTION`, `ADJUSTMENT`), a timestamp and an optional
   note and order reference. Movements can be listed per product or for all products.
+
+**Purchasing and production**
+- Suppliers (name, email, phone, notes). Each product is either bought from a supplier or made in-house, with an
+  optional reorder point and reorder quantity.
+- Purchase orders: draft them with one line per product (optional unit cost), mark them as ordered, receive what
+  arrives in as many parts as needed, close them when the rest won't come, or cancel them. Every receipt adds stock
+  with a `RECEIPT` movement that points back to the purchase order.
+- Production runs: plan a quantity of a made product, then complete it to add the stock (`PRODUCTION` movement), or
+  cancel it.
+- Reorder list and **Restock**: products at or below their reorder point, with what is already on order. Restock
+  adds the reorder quantity to the supplier's draft purchase order or plans a production run, for you to review;
+  **Restock all** does that for every product that needs it.
 
 **Data**
 - Data is kept between restarts in an H2 file database. The schema is managed by Flyway migrations.
@@ -277,15 +290,12 @@ The [review](docs/REVIEW.md) has the full list with recommendations. The main po
 - **H2 file format.** A future Spring Boot or H2 upgrade may not open existing database files or backups without
   an export and re-import.
 - **Spring Boot 3.5.x is out of open-source support** (since June 2026); 4.x is the next step.
-- **Tauri icons are not checked in** and must be generated before the first desktop build. The desktop app hasn't
-  had a first real run yet.
+- **Tauri icons are not checked in** and must be generated before the first desktop build.
 
 **Roadmap**
-1. **v2 Run 2:** suppliers and purchase orders (`RECEIPT`), production runs (`PRODUCTION`), buy/make source,
-   reorder points and a Restock action.
-2. **v2 Run 3:** categories, unit cost, reports and CSV export.
-3. Plan the migration to Spring Boot 4.x, and the H2 2.3 upgrade (export and re-import, see O-13).
-4. Later: ship backend and desktop as one app, multi-location stock, demand forecasting.
+1. **v2 Run 3:** categories, unit cost, reports and CSV export.
+2. Plan the migration to Spring Boot 4.x, and the H2 2.3 upgrade (export and re-import, see O-13).
+3. Later: ship backend and desktop as one app, multi-location stock, demand forecasting.
 
 ## Contributing
 
