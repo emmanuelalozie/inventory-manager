@@ -37,8 +37,8 @@ public interface PurchaseOrderRepository extends JpaRepository<PurchaseOrder, Lo
 
     boolean existsBySupplierId(Long supplierId);
 
-    /** Units ordered but not yet received, per product, over draft, ordered and partly received purchase orders. */
-    @Query("select l.product.id, sum(l.quantityOrdered - l.quantityReceived) from PurchaseOrderLine l"
+    /** Units still to come (ordered, not received or cancelled), per product, over open purchase orders. */
+    @Query("select l.product.id, sum(l.quantityOrdered - l.quantityReceived - l.quantityCancelled) from PurchaseOrderLine l"
             + " where l.purchaseOrder.status in :statuses and l.product.id in :productIds group by l.product.id")
     List<Object[]> sumOpenQuantities(@Param("statuses") Collection<PurchaseOrderStatus> statuses,
                                      @Param("productIds") Collection<Long> productIds);

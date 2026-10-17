@@ -43,6 +43,14 @@ public interface PurchaseOrderService {
     PurchaseOrder receive(Long id, ReceiptRequest request);
 
     /**
+     * Cancels what is still to come on one line of an ORDERED or PARTIALLY_RECEIVED purchase order. When nothing is
+     * left to come on any line, the order becomes CLOSED (something arrived) or CANCELLED (nothing did).
+     *
+     * @throws com.example.inventix.exception.ConflictException for another status, or a line with nothing left
+     */
+    PurchaseOrder cancelRemaining(Long id, Long lineId);
+
+    /**
      * Deletes a DRAFT or CANCELLED purchase order. Anything that received stock is kept as a record.
      */
     void deletePurchaseOrder(Long id);

@@ -4,6 +4,7 @@ import com.example.inventix.model.Product;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -38,6 +39,16 @@ public interface ProductRepository extends JpaRepository<Product, Long> {
 
     @Query("select count(r) > 0 from ProductionRun r where r.product.id = :productId")
     boolean isOnProductionRun(@Param("productId") Long productId);
+
+    @Query("select count(c) > 0 from ProductComponent c where c.component.id = :productId")
+    boolean isUsedAsComponent(@Param("productId") Long productId);
+
+    @Query("select count(c) > 0 from ProductComponent c where c.productId = :productId")
+    boolean hasComponents(@Param("productId") Long productId);
+
+    @Modifying
+    @Query("delete from ProductComponent c where c.productId = :productId")
+    void deleteComponentsOf(@Param("productId") Long productId);
 
     List<Product> findByQuantityLessThanEqualOrderByQuantityAsc(Integer threshold);
 

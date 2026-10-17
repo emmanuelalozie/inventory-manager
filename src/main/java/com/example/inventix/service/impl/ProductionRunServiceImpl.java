@@ -1,13 +1,16 @@
 package com.example.inventix.service.impl;
 
 import com.example.inventix.dto.ProductionRunRequest;
+import com.example.inventix.exception.BadRequestException;
 import com.example.inventix.exception.ConflictException;
 import com.example.inventix.exception.NotFoundException;
 import com.example.inventix.exception.ProductNotFoundException;
 import com.example.inventix.model.MovementReason;
 import com.example.inventix.model.Product;
+import com.example.inventix.model.ProductComponent;
 import com.example.inventix.model.ProductionRun;
 import com.example.inventix.model.ProductionRunStatus;
+import com.example.inventix.repository.ProductComponentRepository;
 import com.example.inventix.repository.ProductRepository;
 import com.example.inventix.repository.ProductionRunRepository;
 import com.example.inventix.service.Paging;
@@ -30,14 +33,17 @@ public class ProductionRunServiceImpl implements ProductionRunService {
     private final ProductionRunRepository productionRunRepository;
     private final ProductRepository productRepository;
     private final ProductService productService;
+    private final ProductComponentRepository componentRepository;
 
     @Autowired
     public ProductionRunServiceImpl(ProductionRunRepository productionRunRepository,
                                     ProductRepository productRepository,
-                                    ProductService productService) {
+                                    ProductService productService,
+                                    ProductComponentRepository componentRepository) {
         this.productionRunRepository = productionRunRepository;
         this.productRepository = productRepository;
         this.productService = productService;
+        this.componentRepository = componentRepository;
     }
 
     @Override
@@ -86,6 +92,16 @@ public class ProductionRunServiceImpl implements ProductionRunService {
                     + " to " + status);
         }
         if (status == ProductionRunStatus.COMPLETED) {
+            // Use up the components first: if one is short, InsufficientStockException rolls everything back.
+            for (ProductComponent component : componentRepository.findByProductId(run.getProduct().getId())) {
+                long needed = (long) component.getQuantity() * run.getQuantity();
+                if (needed > Integer.MAX_VALUE) {
+                    throw new BadRequestException("Production run " + id + " needs too many of component "
+                            + component.getComponent().getSku());
+                }
+                productService.changeStock(component.getComponent().getId(), (int) -needed, MovementReason.CONSUMPTION,
+                        "Used in production run #" + id, StockReference.productionRun(id));
+            }
             String note = "Production run #" + id + (run.getNotes() == null ? "" : ": " + run.getNotes());
             productService.changeStock(run.getProduct().getId(), run.getQuantity(), MovementReason.PRODUCTION,
                     truncate(note), StockReference.productionRun(id));

@@ -74,6 +74,12 @@ public class PurchaseOrderController {
         return PurchaseOrderResponse.from(purchaseOrderService.receive(id, request));
     }
 
+    /** Cancels what is still to come on one line; the rest of the order is unchanged. */
+    @PostMapping("/{id}/lines/{lineId}/cancel-remaining")
+    public PurchaseOrderResponse cancelRemaining(@PathVariable Long id, @PathVariable Long lineId) {
+        return PurchaseOrderResponse.from(purchaseOrderService.cancelRemaining(id, lineId));
+    }
+
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> deletePurchaseOrder(@PathVariable Long id) {
         purchaseOrderService.deletePurchaseOrder(id);

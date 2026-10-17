@@ -26,8 +26,9 @@ public interface ProductionRunService {
     ProductionRun updateProductionRun(Long id, ProductionRunRequest request);
 
     /**
-     * PLANNED -> COMPLETED adds the quantity to stock with a PRODUCTION movement; PLANNED -> CANCELLED changes
-     * nothing else.
+     * PLANNED -> COMPLETED uses up the product's components (quantity per unit x run quantity, CONSUMPTION
+     * movements) and adds the quantity to stock with a PRODUCTION movement; PLANNED -> CANCELLED changes nothing
+     * else. If a component is short, nothing changes and InsufficientStockException (409) says which.
      *
      * @throws com.example.inventix.exception.ConflictException for any other change
      */

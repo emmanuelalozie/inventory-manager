@@ -92,6 +92,10 @@ public class ProductServiceImpl implements ProductService {
 
         productDetails.setSku(normalizeSku(productDetails.getSku()));
         checkSourcing(productDetails);
+        if (productDetails.getSource() != ProductSource.MAKE && productRepository.hasComponents(id)) {
+            throw new BadRequestException("This product has components, so it must stay made in-house (MAKE). "
+                    + "Remove its components first.");
+        }
         if (productRepository.existsBySkuAndIdNot(productDetails.getSku(), id)) {
             throw new DuplicateSkuException("A product with SKU '" + productDetails.getSku() + "' already exists");
         }
@@ -181,6 +185,10 @@ public class ProductServiceImpl implements ProductService {
         if (productRepository.isOnProductionRun(id)) {
             throw new ProductInUseException("Product " + id + " has production runs and cannot be deleted");
         }
+        if (productRepository.isUsedAsComponent(id)) {
+            throw new ProductInUseException("Product " + id + " is a component of other products and cannot be deleted");
+        }
+        productRepository.deleteComponentsOf(id);
         // The ledger rows point at the product (foreign key), so its history goes with it.
         stockMovementRepository.deleteByProductId(id);
         productRepository.deleteById(id);

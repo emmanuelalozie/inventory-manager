@@ -339,5 +339,51 @@ class InventixApplicationTests {
         mockMvc.perform(get("/api/export/top-sellers.csv")).andExpect(status().isOk());
         mockMvc.perform(delete("/api/categories/{id}", categoryId)).andExpect(status().isConflict());
     }
+
+    @Test
+    void productionRun_overHttp_isAllOrNothingWhenAComponentIsShort() throws Exception {
+        int tableId = postForId("/api/products", "{\"name\":\"E2E BOM Table\",\"sku\":\"E2E-BOM-TBL\",\"price\":99,"
+                + "\"quantity\":0,\"source\":\"MAKE\"}");
+        int legId = postForId("/api/products", "{\"name\":\"E2E BOM A Leg\",\"sku\":\"E2E-BOM-LEG\",\"price\":1,\"quantity\":100}");
+        int topId = postForId("/api/products", "{\"name\":\"E2E BOM B Top\",\"sku\":\"E2E-BOM-TOP\",\"price\":1,\"quantity\":1}");
+        mockMvc.perform(put("/api/products/{id}/components", tableId).contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"components\":[{\"componentId\":" + legId + ",\"quantity\":4},"
+                                + "{\"componentId\":" + topId + ",\"quantity\":1}]}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].sku").value("E2E-BOM-LEG"))
+                .andExpect(jsonPath("$[0].inStock").value(100));
+        int runId = postForId("/api/production-runs", "{\"productId\":" + tableId + ",\"quantity\":2}");
+
+        // Legs are used up first (by name), then the tops run out: the leg consumption must be undone too.
+        mockMvc.perform(patch("/api/production-runs/{id}/status", runId).contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"status\":\"COMPLETED\"}"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.message").value(org.hamcrest.Matchers.containsString("E2E BOM B Top")));
+
+        mockMvc.perform(get("/api/products/{id}", legId)).andExpect(jsonPath("$.quantity").value(100));
+        mockMvc.perform(get("/api/products/{id}", tableId)).andExpect(jsonPath("$.quantity").value(0));
+        mockMvc.perform(get("/api/production-runs/{id}", runId)).andExpect(jsonPath("$.status").value("PLANNED"));
+    }
+
+    @Test
+    void cancelRemaining_overHttp() throws Exception {
+        int supplierId = postForId("/api/suppliers", "{\"name\":\"E2E Cancel Supplier\"}");
+        int productId = postForId("/api/products", "{\"name\":\"E2E Washer\",\"sku\":\"E2E-WASH\",\"price\":0.05,\"quantity\":0}");
+        String created = mockMvc.perform(post("/api/purchase-orders").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"supplierId\":" + supplierId + ",\"lines\":[{\"productId\":" + productId + ",\"quantity\":10}]}"))
+                .andReturn().getResponse().getContentAsString();
+        int poId = objectMapper.readTree(created).get("id").asInt();
+        int lineId = objectMapper.readTree(created).get("lines").get(0).get("id").asInt();
+        mockMvc.perform(patch("/api/purchase-orders/{id}/status", poId).contentType(MediaType.APPLICATION_JSON)
+                .content("{\"status\":\"ORDERED\"}")).andExpect(status().isOk());
+        mockMvc.perform(post("/api/purchase-orders/{id}/receipts", poId).contentType(MediaType.APPLICATION_JSON)
+                .content("{\"lines\":[{\"lineId\":" + lineId + ",\"quantity\":4}]}")).andExpect(status().isOk());
+
+        mockMvc.perform(post("/api/purchase-orders/{id}/lines/{lineId}/cancel-remaining", poId, lineId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("CLOSED"))
+                .andExpect(jsonPath("$.lines[0].quantityCancelled").value(6))
+                .andExpect(jsonPath("$.lines[0].quantityRemaining").value(0));
+    }
 }
 

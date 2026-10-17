@@ -69,8 +69,24 @@ public class PurchaseOrder {
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
     }
 
-    public boolean isFullyReceived() {
+    /** Nothing is still to come on any line (everything arrived or was cancelled). */
+    public boolean isSettled() {
         return !lines.isEmpty() && lines.stream().allMatch(line -> line.getQuantityRemaining() == 0);
+    }
+
+    public boolean hasCancelledQuantities() {
+        return lines.stream().anyMatch(line -> line.getQuantityCancelled() > 0);
+    }
+
+    /**
+     * The status once nothing is still to come: RECEIVED if everything ordered arrived, CLOSED if part was
+     * cancelled, CANCELLED if nothing arrived at all.
+     */
+    public PurchaseOrderStatus settledStatus() {
+        if (!hasCancelledQuantities()) {
+            return PurchaseOrderStatus.RECEIVED;
+        }
+        return hasReceivedAnything() ? PurchaseOrderStatus.CLOSED : PurchaseOrderStatus.CANCELLED;
     }
 
     public boolean hasReceivedAnything() {
