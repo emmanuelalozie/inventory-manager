@@ -74,9 +74,9 @@ for one user on one machine: the API only accepts local connections and has no l
 | Area | Technology |
 |---|---|
 | Language | Java 17 |
-| Framework | Spring Boot 3.5.16 (Web, Data JPA, Validation); H2 pinned to 2.2.224 |
+| Framework | Spring Boot 4.1.1 (Spring Framework 7, Hibernate 7, Jackson 3); H2 pinned to 2.2.224 |
 | Database | H2 file database in a per-user folder, schema managed by Flyway; in-memory H2 for tests |
-| Build | Gradle 8.10.2 via the included wrapper |
+| Build | Gradle 9.8.1 via the included wrapper |
 | Utilities | Lombok |
 | Tests | JUnit 5, Mockito, AssertJ, MockMvc (`spring-boot-starter-test`) |
 | Desktop UI | Tauri 2, vanilla HTML / CSS / JavaScript (no framework or bundler) |
@@ -304,11 +304,12 @@ The [review](docs/REVIEW.md) has the full list with recommendations. The main po
 - **Old backups are never cleaned up**, and backups stay on the same disk until you copy them elsewhere.
 - **H2 file format.** A future Spring Boot or H2 upgrade may not open existing database files or backups without
   an export and re-import.
-- **Spring Boot 3.5.x is out of open-source support** (since June 2026); 4.x is the next step.
+- **H2 is pinned to 2.2.224** so existing database files and backups keep opening; moving to a newer H2 needs an
+  export and re-import (see O-13 in the review).
 - **Tauri icons are not checked in** and must be generated before the first desktop build.
 
 **Roadmap**
-1. Plan the migration to Spring Boot 4.x, and the H2 2.3 upgrade (export and re-import, see O-13).
+1. The H2 upgrade (export and re-import, see O-13).
 2. Later: ship backend and desktop as one app, multi-location stock, demand forecasting.
 
 ## Contributing

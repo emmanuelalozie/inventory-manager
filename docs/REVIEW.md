@@ -83,6 +83,7 @@ Paths below are relative to `src/main/java/com/example/inventix/` unless they st
 | F-20 | **v2 Run 3:** CSV export (`/api/export/*.csv`): UTF-8 with BOM, RFC 4180 quoting, formula-like text defused. Desktop Reports view with downloads; category filter, Categories dialog and unit cost in Products. | `export/CsvWriter.java`, `controller/ExportController.java`, `desktop/src/js/reports.js`, `desktop/src/js/products.js` |
 | F-21 | **Run 2 follow-ups:** bills of materials (`/api/products/{id}/components`, migration `V8`) with loop checks; completing a run uses components up (`CONSUMPTION`), all or nothing. Cancelling the rest of one PO line (`quantity_cancelled`, `cancel-remaining`), with orders settling as `CLOSED` or `CANCELLED`. Desktop Components editor, completion preview with shortages, "Cancel rest" and a printable purchase order. | `model/ProductComponent.java`, `service/impl/BillOfMaterialsServiceImpl.java`, `service/impl/ProductionRunServiceImpl.java`, `service/impl/PurchaseOrderServiceImpl.java`, `V8__po_line_cancel_and_components.sql`, `desktop/src/js/purchase-orders.js`, `desktop/src/js/production.js`, `desktop/src/js/products.js` |
 | F-22 | **Ops:** per-user data folder with a one-time copy from `./data` (O-15), and restore on next start from Settings or `POST /api/backup/restore` (O-14). `GET /api/backup` lists backups and folders. | `config/DataLocation.java`, `config/DataLocationPostProcessor.java`, `META-INF/spring.factories`, `service/impl/BackupServiceImpl.java`, `controller/BackupController.java`, `desktop/src/js/main.js` |
+| F-23 | **Platform:** Spring Boot 4.1.1 and Gradle 9.8.1 (O-3), with H2 still pinned to 2.2.224. | `build.gradle`, `gradle/wrapper/gradle-wrapper.properties`, test imports, `config/DataLocationPostProcessor.java` |
 
 **Tests added or updated** (`src/test/java/com/example/inventix/`):
 `controller/ProductControllerTest`, `controller/OrderControllerTest` (new), `service/ProductServiceTest`,
@@ -136,22 +137,22 @@ users with BCrypt hashes, H2 console off) **before** changing `server.address`.
 
 ### O-3. Spring Boot 3.3.x is out of open-source support
 
-**Status:** partly fixed. `build.gradle` now uses Spring Boot **3.5.16** with `io.spring.dependency-management`
-1.1.7. H2 is pinned to 2.2.224 (`ext['h2.version']`) so existing database files and backups still open (see O-13).
-The tests' `@MockBean` (deprecated in 3.4) was replaced with `@MockitoBean`. 3.5.x is itself out of OSS support,
-so the move to 4.x below is still open.
+**Status:** fixed. `build.gradle` uses Spring Boot **4.1.1** (Spring Framework 7, Hibernate 7.4, Jackson 3, Flyway 12)
+with Gradle **9.8.1**, by way of 3.5.16. Boot 4 changes made here:
 
-**Was:** `build.gradle` used Spring Boot **3.3.5**. Open-source support for 3.3.x ended on **30 June 2025** (last release
-3.3.13), so it no longer gets security fixes. 3.4.x ended 31 December 2025 and 3.5.x ended 30 June 2026. The
-supported lines are now 4.0.x and 4.1.x.
+- Modular starters: `spring-boot-starter-webmvc` instead of `-web`, `spring-boot-starter-flyway` (Flyway's
+  auto-configuration is no longer in the core module), `spring-boot-h2console` for `/h2-console`, and the
+  `spring-boot-starter-webmvc-test` / `-data-jpa-test` test starters.
+- Test slice packages moved (`org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest`,
+  `org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest`, `org.springframework.boot.jpa.test.autoconfigure.TestEntityManager`).
+- `EnvironmentPostProcessor` moved to `org.springframework.boot` (and its `spring.factories` key with it).
+- Jackson 3: the test's `ObjectMapper` is `tools.jackson.databind.ObjectMapper`. The annotations used in the app
+  (`com.fasterxml.jackson.annotation.*`) are the same in Jackson 3.
+- springdoc 3.1.x (the line for Boot 4.1).
 
-**Recommendation:**
-- **Next step (low risk):** move to the latest **3.5.x** (3.5.16 at the time of writing). It stays on Spring
-  Framework 6 / Jakarta EE 10 and Java 17, so code changes should be small. Bump
-  `io.spring.dependency-management` too, then run the full test suite.
-- **Later (major migration):** plan a separate move to **Spring Boot 4.x**. Review the official 4.0 migration
-  guide first; expect changes around Spring Framework 7, Jackson, Hibernate and Spring Batch. 3.5.x is also out
-  of OSS support, so don't stay on it for long.
+H2 stays pinned to 2.2.224 (Boot 4.1 would bring 2.4.240), so database files and backups are unchanged (see O-13).
+
+**Was:** `build.gradle` used Spring Boot 3.3.5, out of open-source support since June 2025.
 
 ### O-4. H2 in-memory database only
 
