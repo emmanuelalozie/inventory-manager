@@ -4,9 +4,13 @@ import com.example.inventix.exception.DuplicateSkuException;
 import com.example.inventix.exception.InsufficientStockException;
 import com.example.inventix.exception.ProductInUseException;
 import com.example.inventix.exception.ProductNotFoundException;
+import com.example.inventix.exception.QuantityChangeNotAllowedException;
+import com.example.inventix.model.MovementReason;
 import com.example.inventix.model.Product;
+import com.example.inventix.model.StockMovement;
 import com.example.inventix.repository.OrderItemRepository;
 import com.example.inventix.repository.ProductRepository;
+import com.example.inventix.repository.StockMovementRepository;
 import com.example.inventix.service.ProductService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.orm.ObjectOptimisticLockingFailureException;
@@ -19,13 +23,18 @@ import java.util.List;
 @Transactional
 public class ProductServiceImpl implements ProductService {
 
+    static final String INITIAL_STOCK_NOTE = "Initial stock";
+
     private final ProductRepository productRepository;
     private final OrderItemRepository orderItemRepository;
+    private final StockMovementRepository stockMovementRepository;
 
     @Autowired
-    public ProductServiceImpl(ProductRepository productRepository, OrderItemRepository orderItemRepository) {
+    public ProductServiceImpl(ProductRepository productRepository, OrderItemRepository orderItemRepository,
+                              StockMovementRepository stockMovementRepository) {
         this.productRepository = productRepository;
         this.orderItemRepository = orderItemRepository;
+        this.stockMovementRepository = stockMovementRepository;
     }
 
     @Override
@@ -35,7 +44,14 @@ public class ProductServiceImpl implements ProductService {
         if (productRepository.existsBySku(product.getSku())) {
             throw new DuplicateSkuException("A product with SKU '" + product.getSku() + "' already exists");
         }
-        return productRepository.save(product);
+        int initialQuantity = product.getQuantity() == null ? 0 : product.getQuantity();
+        product.setQuantity(initialQuantity);
+        Product saved = productRepository.save(product);
+        // The starting stock is the product's first ledger entry, so its movements add up to its quantity.
+        if (initialQuantity != 0) {
+            recordMovement(saved, initialQuantity, MovementReason.ADJUSTMENT, INITIAL_STOCK_NOTE, null);
+        }
+        return saved;
     }
 
     @Override
@@ -48,6 +64,13 @@ public class ProductServiceImpl implements ProductService {
             throw new ObjectOptimisticLockingFailureException(Product.class, id);
         }
 
+        // Stock must not change without a ledger entry, so the quantity can't be edited here.
+        if (productDetails.getQuantity() != null && !productDetails.getQuantity().equals(existingProduct.getQuantity())) {
+            throw new QuantityChangeNotAllowedException("Quantity can't be changed by editing the product (stored "
+                    + existingProduct.getQuantity() + ", sent " + productDetails.getQuantity()
+                    + "). Use PATCH /api/products/" + id + "/stock with a note, or leave quantity out.");
+        }
+
         if (productRepository.existsBySkuAndIdNot(productDetails.getSku(), id)) {
             throw new DuplicateSkuException("A product with SKU '" + productDetails.getSku() + "' already exists");
         }
@@ -56,7 +79,6 @@ public class ProductServiceImpl implements ProductService {
         existingProduct.setSku(productDetails.getSku());
         existingProduct.setDescription(productDetails.getDescription());
         existingProduct.setPrice(productDetails.getPrice());
-        existingProduct.setQuantity(productDetails.getQuantity());
 
         return productRepository.save(existingProduct);
     }
@@ -78,8 +100,19 @@ public class ProductServiceImpl implements ProductService {
     }
 
     @Override
-    public Product adjustStock(Long id, int delta) {
-        Product product = getProductById(id);
+    public Product adjustStock(Long productId, int delta, MovementReason reason, String note, Long orderId) {
+        if (reason == null) {
+            throw new IllegalArgumentException("reason is required");
+        }
+        if (delta == 0) {
+            throw new IllegalArgumentException("delta must not be 0");
+        }
+        String cleanNote = note == null || note.isBlank() ? null : note.strip();
+        if (reason == MovementReason.ADJUSTMENT && cleanNote == null) {
+            throw new IllegalArgumentException("A note is required for manual stock adjustments");
+        }
+
+        Product product = getProductById(productId);
         int available = product.getQuantity() == null ? 0 : product.getQuantity();
         int newQuantity = available + delta;
         if (newQuantity < 0) {
@@ -87,7 +120,9 @@ public class ProductServiceImpl implements ProductService {
                     + "': available " + available + ", requested " + (-delta));
         }
         product.setQuantity(newQuantity);
-        return productRepository.save(product);
+        Product saved = productRepository.save(product);
+        recordMovement(saved, delta, reason, cleanNote, orderId);
+        return saved;
     }
 
     @Override
@@ -98,6 +133,12 @@ public class ProductServiceImpl implements ProductService {
         if (orderItemRepository.existsByProductId(id)) {
             throw new ProductInUseException("Product " + id + " is used by existing orders and cannot be deleted");
         }
+        // The ledger rows point at the product (foreign key), so its history goes with it.
+        stockMovementRepository.deleteByProductId(id);
         productRepository.deleteById(id);
+    }
+
+    private void recordMovement(Product product, int delta, MovementReason reason, String note, Long orderId) {
+        stockMovementRepository.save(new StockMovement(product, delta, reason, note, orderId));
     }
 }

@@ -1,6 +1,16 @@
-// Products view: list/search, create, edit, delete and stock adjustments.
+// Products view: list/search, create, edit, delete, stock adjustments and stock history.
 
-import { ApiError, productsApi } from "./api.js";
+import { ApiError, MOVEMENTS_PAGE_SIZE, productsApi } from "./api.js";
+import {
+  NOTE_MAX_LENGTH,
+  formatDelta,
+  hasMorePages,
+  movementReference,
+  productRequestBody,
+  reasonLabel,
+  sortMovementsNewestFirst,
+  validateNote,
+} from "./helpers.js";
 import { getLowStockThreshold } from "./settings.js";
 import {
   confirmDialog,
@@ -66,7 +76,14 @@ export function openStockDialog(product) {
         <input name="amount" type="number" min="1" step="1" value="1" required>
         <span class="field-error" data-error-for="amount"></span>
       </label>
-      <p class="hint" data-preview></p>`,
+      <p class="hint" data-preview></p>
+      <label class="field">
+        <span class="field-label">Note <span class="req">*</span></span>
+        <textarea name="note" rows="2" maxlength="${NOTE_MAX_LENGTH}" required
+          placeholder="Why the stock changed, e.g. “Recount”, “Damaged in transit”, “Made 40 units”"></textarea>
+        <span class="field-error" data-error-for="note"></span>
+        <span class="hint">Saved in the product's stock history.</span>
+      </label>`,
     onOpen(form) {
       const preview = form.querySelector("[data-preview]");
       const update = () => {
@@ -85,21 +102,36 @@ export function openStockDialog(product) {
     async onSubmit(form) {
       const amount = parseWholeNumber(form.elements.amount.value);
       const remove = form.elements.direction.value === "remove";
+      const { note, error: noteError } = validateNote(form.elements.note.value);
+      let ok = true;
       if (Number.isNaN(amount) || amount < 1) {
         setFieldError(form, "amount", "Enter a whole number of 1 or more");
-        return false;
-      }
-      if (amount > MAX_INT) {
+        ok = false;
+      } else if (amount > MAX_INT) {
         setFieldError(form, "amount", "That number is too large");
-        return false;
-      }
-      if (remove && amount > current) {
+        ok = false;
+      } else if (remove && amount > current) {
         setFieldError(form, "amount", `Only ${current} in stock`);
-        return false;
+        ok = false;
       }
-      const updated = await productsApi.adjustStock(product.id, remove ? -amount : amount);
-      toast(`Stock for ${updated.name} is now ${updated.quantity}`, { type: "success" });
-      return updated;
+      if (noteError) {
+        setFieldError(form, "note", noteError);
+        ok = false;
+      }
+      if (!ok) return false;
+      try {
+        const updated = await productsApi.adjustStock(product.id, remove ? -amount : amount, note);
+        toast(`Stock for ${updated.name} is now ${updated.quantity}`, { type: "success" });
+        return updated;
+      } catch (error) {
+        // The backend names the amount "delta"; show that error next to the Units field.
+        if (error instanceof ApiError) {
+          const delta = error.fieldErrors.find((fe) => fe.field === "delta");
+          if (delta) setFieldError(form, "amount", delta.message);
+          error.fieldErrors = error.fieldErrors.filter((fe) => fe.field !== "delta");
+        }
+        throw error;
+      }
     },
   });
 }
@@ -128,6 +160,7 @@ export function initProducts() {
     if (!product) return;
     if (button.dataset.action === "edit") openProductDialog(product);
     else if (button.dataset.action === "stock") adjustStock(product);
+    else if (button.dataset.action === "history") openMovementsDialog(product);
     else if (button.dataset.action === "delete") deleteProduct(product);
   });
 }
@@ -185,6 +218,7 @@ function renderTable() {
         <td class="hide-narrow">${escapeHtml(formatDateTime(p.updatedAt || p.createdAt))}</td>
         <td class="row-actions">
           <button type="button" class="button button-small" data-action="stock" data-id="${escapeHtml(p.id)}">Stock</button>
+          <button type="button" class="button button-small" data-action="history" data-id="${escapeHtml(p.id)}">History</button>
           <button type="button" class="button button-small" data-action="edit" data-id="${escapeHtml(p.id)}">Edit</button>
           <button type="button" class="button button-small button-danger-ghost" data-action="delete" data-id="${escapeHtml(p.id)}">Delete</button>
         </td>
@@ -237,12 +271,21 @@ function productFormBody(product) {
         <input name="price" type="number" min="0" step="0.01" inputmode="decimal" required value="${value(p.price)}">
         <span class="field-error" data-error-for="price"></span>
       </label>
-      <label class="field">
-        <span class="field-label">Quantity in stock <span class="req">*</span></span>
+      ${
+        product
+          ? `<label class="field">
+        <span class="field-label">Quantity in stock</span>
+        <input name="quantity" type="number" value="${value(p.quantity)}" readonly disabled>
+        <span class="field-error" data-error-for="quantity"></span>
+        <span class="hint">Change stock with the Stock button, so the change and its reason are recorded in the history.</span>
+      </label>`
+          : `<label class="field">
+        <span class="field-label">Starting stock <span class="req">*</span></span>
         <input name="quantity" type="number" min="0" step="1" required value="${value(p.quantity ?? 0)}">
         <span class="field-error" data-error-for="quantity"></span>
-        ${product ? `<span class="hint">To add or remove a few units, use the Stock button instead.</span>` : ""}
-      </label>
+        <span class="hint">Recorded in the stock history as “Initial stock”.</span>
+      </label>`
+      }
       <label class="field span-2">
         <span class="field-label">Description</span>
         <textarea name="description" maxlength="1000" rows="3">${value(p.description)}</textarea>
@@ -251,8 +294,11 @@ function productFormBody(product) {
     </div>`;
 }
 
-/** Validates the product form. Returns the request body, or null after marking the bad fields. */
-function readProductForm(form) {
+/**
+ * Validates the product form. Returns the field values, or null after marking the bad fields.
+ * When editing, quantity is read-only and not checked: it is never sent on update.
+ */
+function readProductForm(form, editing) {
   const f = form.elements;
   const name = f.name.value.trim();
   const sku = f.sku.value.trim();
@@ -278,18 +324,20 @@ function readProductForm(form) {
   else if (!/^\d+(\.\d{1,2})?$/.test(priceText)) fail("price", "Use a number of 0 or more with at most 2 decimals");
   else if (Number(priceText) > MAX_PRICE) fail("price", "Price is too large");
 
-  if (f.quantity.validity.badInput) fail("quantity", "Enter a whole number");
-  else if (!quantityText) fail("quantity", "Quantity is required");
-  else if (Number.isNaN(parseWholeNumber(quantityText))) fail("quantity", "Use a whole number of 0 or more");
-  else if (Number(quantityText) > MAX_INT) fail("quantity", "Quantity is too large");
+  if (!editing) {
+    if (f.quantity.validity.badInput) fail("quantity", "Enter a whole number");
+    else if (!quantityText) fail("quantity", "Quantity is required");
+    else if (Number.isNaN(parseWholeNumber(quantityText))) fail("quantity", "Use a whole number of 0 or more");
+    else if (Number(quantityText) > MAX_INT) fail("quantity", "Quantity is too large");
+  }
 
   if (!ok) return null;
   return {
     name,
     sku,
-    description: description || null,
+    description,
     price: Number(priceText),
-    quantity: Number(quantityText),
+    quantity: editing ? undefined : Number(quantityText),
   };
 }
 
@@ -302,9 +350,9 @@ async function openProductDialog(product) {
     submitLabel: editing ? "Save changes" : "Create product",
     body: productFormBody(product),
     async onSubmit(form) {
-      const body = readProductForm(form);
-      if (!body) return false;
-      if (loadedVersion != null) body.version = loadedVersion;
+      const values = readProductForm(form, editing);
+      if (!values) return false;
+      const body = productRequestBody(values, { editing, version: loadedVersion });
       try {
         return editing
           ? await productsApi.update(product.id, body)
@@ -319,6 +367,7 @@ async function openProductDialog(product) {
             try {
               const latest = await productsApi.get(product.id);
               loadedVersion = latest.version;
+              form.elements.quantity.value = latest.quantity;
               replaceProduct(latest);
             } catch {
               // Keep the error below; the user can close the dialog and refresh.
@@ -342,6 +391,86 @@ async function openProductDialog(product) {
 async function adjustStock(product) {
   const updated = await openStockDialog(product);
   if (updated) replaceProduct(updated);
+}
+
+// ---------------------------------------------------------------------------
+// Stock history
+// ---------------------------------------------------------------------------
+
+function movementsTable(movements) {
+  if (!movements.length) {
+    return `<div class="placeholder placeholder-empty">No stock movements recorded yet.</div>`;
+  }
+  const rows = movements
+    .map((m) => {
+      const delta = Number(m.delta);
+      const ref = movementReference(m);
+      let refCell = `<span class="muted">—</span>`;
+      if (ref && ref.href) refCell = `<a href="${escapeHtml(ref.href)}" data-close>${escapeHtml(ref.label)}</a>`;
+      else if (ref) refCell = escapeHtml(ref.label);
+      return `
+        <tr>
+          <td>${escapeHtml(formatDateTime(m.createdAt))}</td>
+          <td><span class="reason reason-${escapeHtml(String(m.reason || "").toLowerCase())}">${escapeHtml(reasonLabel(m.reason))}</span></td>
+          <td class="num"><span class="delta ${delta > 0 ? "delta-in" : "delta-out"}">${escapeHtml(formatDelta(delta))}</span></td>
+          <td><div class="movement-note">${m.note ? escapeHtml(m.note) : `<span class="muted">—</span>`}</div></td>
+          <td>${refCell}</td>
+        </tr>`;
+    })
+    .join("");
+  return `
+    <div class="table-wrap">
+      <table class="table table-compact">
+        <thead><tr><th>Date</th><th>Reason</th><th class="num">Change</th><th>Note</th><th>Reference</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>`;
+}
+
+/** Shows a product's stock movements, newest first, one page at a time. */
+function openMovementsDialog(product) {
+  let movements = [];
+  let nextPage = 0;
+  return openDialog({
+    title: `Stock history: ${product.name}`,
+    cancelLabel: "Close",
+    wide: true,
+    body: `
+      <p class="muted">SKU ${escapeHtml(product.sku)} · currently <strong>${escapeHtml(product.quantity)}</strong> in stock</p>
+      <div data-movements></div>
+      <div class="movements-more" hidden>
+        <button type="button" class="button" data-action="more">Load older movements</button>
+      </div>`,
+    onOpen(form, dialog) {
+      const listEl = form.querySelector("[data-movements]");
+      const moreEl = form.querySelector(".movements-more");
+      const moreButton = moreEl.querySelector("button");
+
+      const load = async () => {
+        moreButton.disabled = true;
+        if (!movements.length) renderPlaceholder(listEl, "loading", "Loading stock history…");
+        try {
+          const rows = await productsApi.movements(product.id, { page: nextPage, size: MOVEMENTS_PAGE_SIZE });
+          nextPage++;
+          movements = sortMovementsNewestFirst([...movements, ...rows]);
+          listEl.innerHTML = movementsTable(movements);
+          moreEl.hidden = !hasMorePages(rows, MOVEMENTS_PAGE_SIZE);
+        } catch (error) {
+          if (movements.length) showError(error, "Could not load older movements");
+          else showLoadError(listEl, error, "Could not load the stock history");
+        } finally {
+          moreButton.disabled = false;
+        }
+      };
+
+      form.addEventListener("click", (event) => {
+        if (event.target.closest('[data-action="more"]')) load();
+        // An order link switches to the Orders view, so close the dialog on the way.
+        else if (event.target.closest("a[data-close]")) dialog.close();
+      });
+      load();
+    },
+  });
 }
 
 async function deleteProduct(product) {

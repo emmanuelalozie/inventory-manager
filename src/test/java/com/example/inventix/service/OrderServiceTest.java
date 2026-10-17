@@ -3,6 +3,7 @@ package com.example.inventix.service;
 import com.example.inventix.exception.InsufficientStockException;
 import com.example.inventix.exception.InvalidOrderStateException;
 import com.example.inventix.exception.OrderNotFoundException;
+import com.example.inventix.model.MovementReason;
 import com.example.inventix.model.Order;
 import com.example.inventix.model.OrderItem;
 import com.example.inventix.model.OrderStatus;
@@ -348,7 +349,7 @@ class OrderServiceTest {
         orderService.deleteOrder(1L);
 
         verify(orderItemService, never()).deleteOrderItem(anyLong());
-        verify(productService, never()).adjustStock(anyLong(), anyInt());
+        verify(productService, never()).adjustStock(anyLong(), anyInt(), any(), any(), any());
         verify(orderRepository, times(1)).delete(sampleOrder);
     }
 
@@ -360,7 +361,8 @@ class OrderServiceTest {
         Order result = orderService.updateOrderStatus(1L, OrderStatus.CANCELLED);
 
         assertEquals(OrderStatus.CANCELLED, result.getStatus());
-        verify(productService, times(1)).adjustStock(sampleProduct.getId(), sampleItem.getQuantity());
+        verify(productService, times(1)).adjustStock(sampleProduct.getId(), sampleItem.getQuantity(),
+                MovementReason.CANCEL, "Order #1 cancelled", 1L);
         assertEquals(1, result.getOrderItems().size(), "Cancelled orders keep their items as a record");
     }
 
@@ -371,7 +373,7 @@ class OrderServiceTest {
 
         orderService.updateOrderStatus(1L, OrderStatus.SHIPPED);
 
-        verify(productService, never()).adjustStock(anyLong(), anyInt());
+        verify(productService, never()).adjustStock(anyLong(), anyInt(), any(), any(), any());
     }
 
     @Test
@@ -394,7 +396,7 @@ class OrderServiceTest {
                 () -> orderService.updateOrderStatus(1L, OrderStatus.CANCELLED));
         assertEquals(OrderStatus.DELIVERED, sampleOrder.getStatus());
         verify(orderRepository, never()).save(any(Order.class));
-        verify(productService, never()).adjustStock(anyLong(), anyInt());
+        verify(productService, never()).adjustStock(anyLong(), anyInt(), any(), any(), any());
     }
 
     @Test
@@ -406,7 +408,7 @@ class OrderServiceTest {
         Order result = orderService.updateOrderStatus(1L, OrderStatus.CANCELLED);
 
         assertEquals(OrderStatus.CANCELLED, result.getStatus());
-        verify(productService, never()).adjustStock(anyLong(), anyInt());
+        verify(productService, never()).adjustStock(anyLong(), anyInt(), any(), any(), any());
         verify(orderRepository, never()).save(any(Order.class));
     }
 

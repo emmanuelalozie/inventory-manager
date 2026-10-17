@@ -3,6 +3,7 @@ package com.example.inventix.service;
 import com.example.inventix.model.Product;
 import com.example.inventix.repository.OrderItemRepository;
 import com.example.inventix.repository.ProductRepository;
+import com.example.inventix.repository.StockMovementRepository;
 import com.example.inventix.service.impl.ProductServiceImpl;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -35,6 +36,9 @@ class ProductServiceVersionTest {
     @Mock
     private OrderItemRepository orderItemRepository;
 
+    @Mock
+    private StockMovementRepository stockMovementRepository;
+
     @InjectMocks
     private ProductServiceImpl productService;
 
@@ -47,7 +51,8 @@ class ProductServiceVersionTest {
     }
 
     private static Product changes(Long version) {
-        Product changes = new Product(null, "Mouse v2", "WM-001", "Updated", new BigDecimal("25.99"), 12, null, null);
+        // Same quantity as stored: stock can't be changed through an update.
+        Product changes = new Product(null, "Mouse v2", "WM-001", "Updated", new BigDecimal("25.99"), 10, null, null);
         changes.setVersion(version);
         return changes;
     }
@@ -81,7 +86,7 @@ class ProductServiceVersionTest {
 
         Product updated = productService.updateProduct(1L, changes(null));
 
-        assertThat(updated.getQuantity()).isEqualTo(12);
+        assertThat(updated.getPrice()).isEqualByComparingTo("25.99");
         assertThat(updated.getVersion()).isEqualTo(2L);
     }
 

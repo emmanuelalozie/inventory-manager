@@ -8,10 +8,14 @@ It covers:
 - **Dashboard:** product and order counts, stock value, a low-stock list with a quick restock button, orders by
   status and recent orders.
 - **Products:** search, create, edit, delete and adjust stock, with form checks that match the backend rules.
+  Every stock adjustment needs a note. Editing a product never changes its stock; use the Stock button.
+  The History button lists the product's stock movements (date, reason, change, note, order), newest first.
 - **Orders:** list and filter by status, create an order from a product picker, view an order's items and total,
   add items, change item quantities, remove items, change the status (ship, deliver, cancel) and delete orders.
 - **Settings:** the backend URL (default `http://localhost:8080`) and the low-stock threshold, saved in the
-  app's local storage, plus a connection test.
+  app's local storage, plus a connection test and a **Back up now** button that saves a `.zip` copy of the
+  database in the backend's `backups\` folder and shows its file name, path and size. Restoring is manual (see
+  [Data and backups](../README.md#data-and-backups)).
 
 Errors from the backend (the JSON error body described in `..\docs\API.md`) appear as toasts, or next to the
 fields they belong to in forms. If the backend can't be reached, a banner says so and shows the URL it tried.
@@ -24,6 +28,7 @@ desktop\
 ├── scripts\
 │   ├── dev-server.js       Static server for src\ on http://127.0.0.1:1420 (no dependencies)
 │   └── dev-server.test.js  Tests for it, and a check that the port matches tauri.conf.json and CORS
+├── test\                   node --test suites for helpers.js and the request shapes in api.js
 ├── src\                    The UI (served to the webview as-is)
 │   ├── index.html
 │   ├── styles.css
@@ -31,6 +36,8 @@ desktop\
 │       ├── main.js         Routing, connection banner, settings
 │       ├── api.js          fetch wrapper, base URL, all endpoints
 │       ├── ui.js           Toasts, dialogs, formatting, form errors
+│       ├── helpers.js      Pure helpers (note checks, movement and backup formatting), tested in node
+│       ├── package.json    {"type": "module"} so node --test loads these files as ES modules
 │       ├── settings.js     Low-stock threshold preference
 │       ├── dashboard.js
 │       ├── products.js
@@ -75,8 +82,9 @@ desktop\
    .\gradlew.bat bootRun
    ```
 
-   It listens on `http://localhost:8080` and adds five sample products on startup. The database is in memory, so
-   data is lost when it stops.
+   It listens on `http://localhost:8080` (local connections only). Data is kept in `data\inventix.mv.db` under the
+   folder you start it from, and five sample products are added on the first start only. See
+   [Data and backups](../README.md#data-and-backups) for where the data lives and how to restore a backup.
 
 2. **Install the Tauri CLI** in a second terminal:
 
@@ -141,8 +149,9 @@ Other ports are blocked by the backend's CORS settings (`src\main\java\com\examp
 - **Backend URL.** Change it in **Settings**. It's stored per origin in local storage, so the desktop app and
   the browser keep separate values.
 - **Content Security Policy.** `tauri.conf.json` sets a CSP whose `connect-src` allows `http://localhost` and
-  `http://127.0.0.1` on any port (including `8080`), plus Tauri's IPC. If you point the app at a backend on another
-  host, add that host to `connect-src`, and add the app's origin to the backend's CORS list.
+  `http://127.0.0.1` on any port (including `8080`), plus Tauri's IPC. The backend only accepts connections from
+  the same machine (`server.address=127.0.0.1`) and has no login, so pointing the app at another host isn't
+  supported.
 - **No external resources.** Everything (fonts, styles, scripts) is local, so the app works offline apart from
   the backend itself.
 - **`window.__TAURI__`** is enabled (`app.withGlobalTauri`), but the UI only uses it to show where it is running.

@@ -2,6 +2,7 @@
 
 import {
   DEFAULT_BASE_URL,
+  backupApi,
   getBaseUrl,
   normalizeBaseUrl,
   onBaseUrlChange,
@@ -10,6 +11,7 @@ import {
   setBaseUrl,
 } from "./api.js";
 import { initDashboard, showDashboard } from "./dashboard.js";
+import { describeBackup } from "./helpers.js";
 import { initOrders, showOrders } from "./orders.js";
 import { initProducts, showProducts } from "./products.js";
 import {
@@ -17,7 +19,7 @@ import {
   getLowStockThreshold,
   setLowStockThreshold,
 } from "./settings.js";
-import { clearFieldErrors, describeError, setFieldError, showError, toast } from "./ui.js";
+import { clearFieldErrors, describeError, escapeHtml, setFieldError, showError, toast } from "./ui.js";
 
 const VIEWS = {
   dashboard: showDashboard,
@@ -126,6 +128,7 @@ function initSettings() {
   });
 
   el("settings-test").addEventListener("click", () => testConnection());
+  el("backup-now").addEventListener("click", () => runBackup());
 }
 
 function showSettings() {
@@ -145,6 +148,37 @@ async function testConnection() {
     showError(error, "Connection test failed");
   } finally {
     button.disabled = false;
+  }
+}
+
+async function runBackup() {
+  const button = el("backup-now");
+  const result = el("backup-result");
+  const label = button.textContent;
+  button.disabled = true;
+  button.textContent = "Backing up…";
+  result.hidden = true;
+  try {
+    const backup = await backupApi.create();
+    const { title, rows } = describeBackup(backup);
+    result.className = "result-success";
+    result.innerHTML = `
+      <strong>${escapeHtml(title)}</strong>
+      <dl class="info-list">
+        ${rows.map(([name, value]) => `<dt>${escapeHtml(name)}</dt><dd>${escapeHtml(value)}</dd>`).join("")}
+      </dl>`;
+    toast(title, { type: "success" });
+  } catch (error) {
+    // The server's message says why, e.g. the backend uses an in-memory database (409).
+    const { message, details } = describeError(error);
+    result.className = "form-error";
+    result.innerHTML = `
+      <div>Backup failed. ${escapeHtml(message)}</div>
+      ${details.length ? `<ul>${details.map((line) => `<li>${escapeHtml(line)}</li>`).join("")}</ul>` : ""}`;
+  } finally {
+    result.hidden = false;
+    button.disabled = false;
+    button.textContent = label;
   }
 }
 

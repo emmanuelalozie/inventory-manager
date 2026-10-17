@@ -151,6 +151,18 @@
               of them, requests fail as if the backend were down.
             </p>
           </div>
+          <div class="card settings-card">
+            <div class="card-header"><h2>Backup</h2></div>
+            <p class="muted">
+              Saves a copy of the whole database as a <code>.zip</code> file on the computer running the backend, in
+              its backups folder (<code>inventix.backup.dir</code>, default <code>.\backups</code>). It is safe to back
+              up while the app is in use.
+            </p>
+            <div class="form-actions">
+              <button type="button" class="button button-primary" id="backup-now">Back up now</button>
+            </div>
+            <div id="backup-result" aria-live="polite" hidden></div>
+          </div>
         </section>
       </main>
     </div>

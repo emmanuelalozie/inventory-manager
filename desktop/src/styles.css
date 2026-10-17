@@ -813,6 +813,84 @@ textarea.invalid {
 
 .info-list dd {
   margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.result-success {
+  background: var(--success-soft);
+  border: 1px solid var(--success);
+  border-radius: 8px;
+  padding: 0.6rem 0.8rem;
+}
+
+.result-success > strong {
+  color: var(--success);
+}
+
+.result-success .info-list {
+  border-top: none;
+  padding-top: 0.4rem;
+}
+
+/* ---------- Stock movements ---------- */
+
+.delta {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.delta-in {
+  color: var(--success);
+}
+
+.delta-out {
+  color: var(--danger);
+}
+
+.reason {
+  display: inline-block;
+  padding: 0.1rem 0.5rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  white-space: nowrap;
+}
+
+.reason-sale {
+  background: var(--primary-soft);
+  color: var(--primary);
+  border-color: transparent;
+}
+
+.reason-cancel {
+  background: var(--warning-soft);
+  color: var(--warning);
+  border-color: transparent;
+}
+
+.reason-receipt,
+.reason-production {
+  background: var(--success-soft);
+  color: var(--success);
+  border-color: transparent;
+}
+
+.movement-note {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-width: 36ch;
+}
+
+.movements-more {
+  display: flex;
+  justify-content: center;
+  margin-top: 0.75rem;
+}
+
+.char-count {
+  align-self: flex-end;
 }
 
 /* ---------- Placeholders and banners ---------- */
