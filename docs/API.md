@@ -10,13 +10,14 @@ This is the contract between the Inventix backend and the desktop UI.
 - **Content type:** every request body and response body is JSON (`Content-Type: application/json`).
 - **Responses are DTOs.** No endpoint returns or accepts a JPA entity. The shapes below are the full response
   bodies.
-- **Database:** H2 file database `jdbc:h2:file:./data/inventix`, kept between restarts. The schema is managed by
+- **Database:** H2 file database in the per-user Inventix folder (see the README, "Data and backups"), kept between
+  restarts. The schema is managed by
   Flyway. Five sample products are added on the first start only, when there are no products (turn this off with
   `inventix.seed-data=false`).
 - **OpenAPI:** Swagger UI at `http://localhost:8080/swagger-ui.html`, the generated document at
   `http://localhost:8080/v3/api-docs`. This file remains the reference for the rules behind each endpoint.
-- **H2 console:** `http://localhost:8080/h2-console` (JDBC URL `jdbc:h2:file:./data/inventix`, user `sa`, no
-  password).
+- **H2 console:** `http://localhost:8080/h2-console` (JDBC URL: the `Database:` path from the backend's log without
+  `.mv.db`, user `sa`, no password).
 
 ## CORS
 
@@ -306,6 +307,9 @@ For nested fields, `field` uses paths like `items[0].quantity`.
 | PUT | `/api/orders/{orderId}/items/{itemId}` | 200 | Change an item's quantity |
 | DELETE | `/api/orders/{orderId}/items/{itemId}` | 204 | Remove an item from a `PENDING` order |
 | POST | `/api/backup` | 201 | Write a backup zip of the database |
+| GET | `/api/backup` | 200 | Data and backup folders, backups, pending restore |
+| POST | `/api/backup/restore` | 200 | Restore a backup on the next start |
+| DELETE | `/api/backup/restore` | 200 | Cancel a pending restore |
 | GET | `/api/suppliers` | 200 | List suppliers by name |
 | GET | `/api/suppliers/{id}` | 200 | Get one supplier |
 | POST | `/api/suppliers` | 201 | Create a supplier |
@@ -545,11 +549,11 @@ All filters are optional and can be combined. `from` and `to` are dates (`2026-1
 Writes a zip copy of the database with H2's `BACKUP TO`. No request body: the server picks the folder and file
 name. It runs while the app is in use; H2 copies the transaction log too, so the zip is consistent.
 
-- **Folder:** `inventix.backup.dir` in `application.properties`, default `./backups` (relative to the folder the
-  backend was started from). It is created if it doesn't exist.
+- **Folder:** `inventix.backup.dir`, default `backups` in the per-user Inventix folder (see the README, "Data and
+  backups"). It is created if it doesn't exist.
 - **File name:** `inventix-backup-<yyyyMMdd-HHmmss>.zip` (local time). A second backup in the same second gets
   `-1`, `-2`, … instead of overwriting the first.
-- **Contents:** `inventix.mv.db`. To restore, see the README ("Backups").
+- **Contents:** `inventix.mv.db`. To restore one, see [`POST /api/backup/restore`](#post-apibackuprestore).
 - Old backups are never deleted by the server.
 
 Responses:
@@ -565,13 +569,44 @@ Responses:
 }
 ```
 
-- **405**: any method other than `POST`
 - **409**: the database is in memory, so there is nothing to back up (`"The database is in memory, so there is
   nothing to back up. Use a file database to enable backups."`)
 - **500**: the folder couldn't be created or the backup command failed. `message` starts with `"Backup failed: "`
   or names the folder.
 
 The desktop app uses a 120-second timeout for this call. Every other call uses 10 seconds.
+
+#### `GET /api/backup`
+
+Where the data lives, the backups (newest first) and any restore waiting for the next start:
+
+```json
+{
+  "databaseFile": "C:\\Users\\me\\AppData\\Local\\Inventix\\data\\inventix.mv.db",
+  "backupDir": "C:\\Users\\me\\AppData\\Local\\Inventix\\backups",
+  "pendingRestore": null,
+  "backups": [{ "fileName": "inventix-backup-20261017-091500.zip", "sizeBytes": 20480, "createdAt": "2026-10-17T09:15:00Z" }]
+}
+```
+
+`databaseFile` is `null` when the database isn't a file managed by Inventix (e.g. the in-memory test database).
+
+#### `POST /api/backup/restore`
+
+`{"fileName": "inventix-backup-20261017-091500.zip"}` schedules that backup to be restored **the next time the
+backend starts**; nothing changes until then. On that start, before the database is opened, the backup's
+`inventix.mv.db` replaces the current one, which is kept as `inventix-before-restore-<yyyyMMdd-HHmmss>.mv.db` in the
+data folder. Flyway then applies any newer migrations. If the backup can't be used, the current database is kept
+and the request is dropped (the log says why).
+
+- **200**: the same body as `GET /api/backup`, with `pendingRestore` set
+- **400**: `fileName` is missing, isn't a plain `.zip` file name in the backup folder, doesn't exist, or holds no
+  database
+- **409**: the database isn't a file managed by Inventix
+
+#### `DELETE /api/backup/restore`
+
+Cancels a scheduled restore. **200** with the backup status.
 
 ---
 

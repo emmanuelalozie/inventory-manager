@@ -82,6 +82,7 @@ Paths below are relative to `src/main/java/com/example/inventix/` unless they st
 | F-19 | **v2 Run 3:** Reports (`/api/reports/stock-value`, `/movements`, `/top-sellers`) over whole days (`DateRange`), and `from`/`to` plus `X-Total-Count` on `GET /api/stock-movements`. | `service/impl/ReportServiceImpl.java`, `controller/ReportController.java`, `service/DateRange.java` |
 | F-20 | **v2 Run 3:** CSV export (`/api/export/*.csv`): UTF-8 with BOM, RFC 4180 quoting, formula-like text defused. Desktop Reports view with downloads; category filter, Categories dialog and unit cost in Products. | `export/CsvWriter.java`, `controller/ExportController.java`, `desktop/src/js/reports.js`, `desktop/src/js/products.js` |
 | F-21 | **Run 2 follow-ups:** bills of materials (`/api/products/{id}/components`, migration `V8`) with loop checks; completing a run uses components up (`CONSUMPTION`), all or nothing. Cancelling the rest of one PO line (`quantity_cancelled`, `cancel-remaining`), with orders settling as `CLOSED` or `CANCELLED`. Desktop Components editor, completion preview with shortages, "Cancel rest" and a printable purchase order. | `model/ProductComponent.java`, `service/impl/BillOfMaterialsServiceImpl.java`, `service/impl/ProductionRunServiceImpl.java`, `service/impl/PurchaseOrderServiceImpl.java`, `V8__po_line_cancel_and_components.sql`, `desktop/src/js/purchase-orders.js`, `desktop/src/js/production.js`, `desktop/src/js/products.js` |
+| F-22 | **Ops:** per-user data folder with a one-time copy from `./data` (O-15), and restore on next start from Settings or `POST /api/backup/restore` (O-14). `GET /api/backup` lists backups and folders. | `config/DataLocation.java`, `config/DataLocationPostProcessor.java`, `META-INF/spring.factories`, `service/impl/BackupServiceImpl.java`, `controller/BackupController.java`, `desktop/src/js/main.js` |
 
 **Tests added or updated** (`src/test/java/com/example/inventix/`):
 `controller/ProductControllerTest`, `controller/OrderControllerTest` (new), `service/ProductServiceTest`,
@@ -303,24 +304,22 @@ the app. Try it on a copy first. Check the H2 version in `gradlew.bat dependenci
 
 ### O-14. Restore is manual
 
-**Status:** open.
-There is a backup endpoint but no restore endpoint or button. The steps (in the README) are: stop the backend,
-move `data/inventix.mv.db` aside, unzip the backup into `data/`, start the backend. Backups are never deleted, so
-`./backups` grows until it is cleaned up by hand, and they are kept on the same disk as the database.
+**Status:** fixed. Settings lists the backups; **Restore…** (or `POST /api/backup/restore`) writes
+`restore-pending.txt` in the data folder, and on the next start `DataLocationPostProcessor` puts the backup's
+database in place before the database is opened, keeping the replaced file as
+`inventix-before-restore-<timestamp>.mv.db`. A backup without a database, or any error, leaves the current
+database as it was and clears the request. Covered by `BackupServiceTest` (full round trip on a real H2 file) and
+`DataLocationTest`.
 
-**Recommendation:** document copying backups to another drive or cloud folder. Later, consider a restore command
-(it needs the app to close the database first), a retention setting, and a scheduled backup.
+**Still open:** a retention setting and scheduled backups; backups still stay on the same disk until copied.
 
 ### O-15. Database location depends on the working directory
 
-**Status:** open.
-`./data/inventix` and `./backups` are relative to the folder the backend is started from. Starting it from
-another folder (for example a jar run from `Downloads`) silently creates a new empty database there, which is
-then seeded with sample data. Only one process can open the file at a time (`inventix.lock.db`), so a second
-backend, or an external tool such as a stand-alone H2 console, fails with "database may be already in use".
-
-**Recommendation:** set an absolute path (e.g. under `%LOCALAPPDATA%\Inventix`) when the app is packaged as a
-single app (Tauri sidecar), and log the resolved database path on startup.
+**Status:** fixed. `inventix.home` defaults to a per-user folder (`%LOCALAPPDATA%\Inventix`,
+`~/Library/Application Support/Inventix`, `~/.local/share/inventix`), with the database in `{home}/data` and backups in
+`{home}/backups`, wherever the backend is started from. `INVENTIX_HOME` and `INVENTIX_DATA_DIR` override it. The
+first start copies a database from the old `./data` folder when the new folder has none (the original is left in
+place), and the resolved path is logged and shown in Settings (`GET /api/backup`).
 
 ### O-16. Ledger follow-ups
 

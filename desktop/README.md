@@ -26,7 +26,8 @@ It covers:
   top sellers, plus CSV downloads (products, stock value, stock changes, top sellers).
 - **Settings:** the backend URL (default `http://localhost:8080`) and the low-stock threshold, saved in the
   app's local storage, plus a connection test and a **Back up now** button that saves a `.zip` copy of the
-  database in the backend's `backups\` folder and shows its file name, path and size. Restoring is manual (see
+  database in the backend's `backups\` folder and shows its file name, path and size. It also shows where the
+  database and backups live, lists the backups, and can restore one on the next start of the backend (see
   [Data and backups](../README.md#data-and-backups)).
 
 Errors from the backend (the JSON error body described in `..\docs\API.md`) appear as toasts, or next to the
