@@ -43,12 +43,15 @@ public class StockMovement {
     private String note;
 
     // Plain ids without foreign keys: pending orders can be deleted while their movements stay in the
-    // ledger, and the purchase_orders and locations tables don't exist yet.
+    // ledger, and the locations table doesn't exist yet.
     @Column(name = "order_id")
     private Long orderId;
 
     @Column(name = "purchase_order_id")
     private Long purchaseOrderId;
+
+    @Column(name = "production_run_id")
+    private Long productionRunId;
 
     @Column(name = "location_id")
     private Long locationId;

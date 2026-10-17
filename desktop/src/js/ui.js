@@ -38,7 +38,7 @@ export function formatDateTime(value) {
 
 export function statusBadge(status) {
   const safe = escapeHtml(status || "UNKNOWN");
-  return `<span class="badge badge-${safe.toLowerCase()}">${safe}</span>`;
+  return `<span class="badge badge-${safe.toLowerCase()}">${safe.replace(/_/g, " ")}</span>`;
 }
 
 export function stockBadge(quantity, threshold) {

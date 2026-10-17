@@ -292,3 +292,71 @@ export const ordersApi = {
   removeItem: (orderId, itemId) =>
     request(`/api/orders/${id(orderId)}/items/${id(itemId)}`, { method: "DELETE" }),
 };
+
+// ---------------------------------------------------------------------------
+// Purchasing and production (v2 Run 2)
+// ---------------------------------------------------------------------------
+
+export const suppliersApi = {
+  /** All suppliers, by name. */
+  list: () => request("/api/suppliers"),
+  get: (supplierId) => request(`/api/suppliers/${id(supplierId)}`),
+  /** supplier: { name, email, phone, notes } plus `version` on update */
+  create: (supplier) => request("/api/suppliers", { method: "POST", body: supplier }),
+  update: (supplierId, supplier) => request(`/api/suppliers/${id(supplierId)}`, { method: "PUT", body: supplier }),
+  remove: (supplierId) => request(`/api/suppliers/${id(supplierId)}`, { method: "DELETE" }),
+};
+
+export const PURCHASE_ORDER_STATUSES = ["DRAFT", "ORDERED", "PARTIALLY_RECEIVED", "RECEIVED", "CLOSED", "CANCELLED"];
+
+/** Status changes a client can request, mirroring the backend (receiving moves an order on by itself). */
+export const PURCHASE_ORDER_TRANSITIONS = {
+  DRAFT: ["ORDERED", "CANCELLED"],
+  ORDERED: ["CANCELLED"],
+  PARTIALLY_RECEIVED: ["CLOSED"],
+  RECEIVED: [],
+  CLOSED: [],
+  CANCELLED: [],
+};
+
+export const purchaseOrdersApi = {
+  /** One page, newest first. Resolves with { items, total }. */
+  search: ({ status, supplierId, page = 0, size = LIST_PAGE_SIZE } = {}) =>
+    request(`/api/purchase-orders${query({ status, supplierId, page, size })}`, { withTotal: true }),
+  get: (purchaseOrderId) => request(`/api/purchase-orders/${id(purchaseOrderId)}`),
+  /** body: { supplierId, notes, lines: [{ productId, quantity, unitCost }] } */
+  create: (body) => request("/api/purchase-orders", { method: "POST", body }),
+  /** Replaces a draft's supplier, notes and lines. */
+  update: (purchaseOrderId, body) =>
+    request(`/api/purchase-orders/${id(purchaseOrderId)}`, { method: "PUT", body }),
+  setStatus: (purchaseOrderId, status) =>
+    request(`/api/purchase-orders/${id(purchaseOrderId)}/status`, { method: "PATCH", body: { status } }),
+  /** lines: [{ lineId, quantity }] */
+  receive: (purchaseOrderId, lines, note) =>
+    request(`/api/purchase-orders/${id(purchaseOrderId)}/receipts`, { method: "POST", body: { lines, note } }),
+  remove: (purchaseOrderId) => request(`/api/purchase-orders/${id(purchaseOrderId)}`, { method: "DELETE" }),
+};
+
+export const PRODUCTION_RUN_STATUSES = ["PLANNED", "COMPLETED", "CANCELLED"];
+
+export const productionRunsApi = {
+  /** One page, newest first. Resolves with { items, total }. */
+  search: ({ status, productId, page = 0, size = LIST_PAGE_SIZE } = {}) =>
+    request(`/api/production-runs${query({ status, productId, page, size })}`, { withTotal: true }),
+  /** body: { productId, quantity, notes } */
+  create: (body) => request("/api/production-runs", { method: "POST", body }),
+  update: (runId, body) => request(`/api/production-runs/${id(runId)}`, { method: "PUT", body }),
+  /** COMPLETED adds the quantity to stock; CANCELLED changes nothing else. */
+  setStatus: (runId, status) =>
+    request(`/api/production-runs/${id(runId)}/status`, { method: "PATCH", body: { status } }),
+  remove: (runId) => request(`/api/production-runs/${id(runId)}`, { method: "DELETE" }),
+};
+
+export const restockApi = {
+  /** Products at or below their reorder point, with what is on order and what is missing for Restock. */
+  reorderList: () => request("/api/reorder-list"),
+  /** Adds the product to its supplier's draft purchase order, or plans a production run. */
+  restock: (productId) => request(`/api/products/${id(productId)}/restock`, { method: "POST" }),
+  /** Restocks every ready product that isn't already covered. Resolves with one result per product. */
+  restockAll: () => request("/api/reorder-list/restock", { method: "POST" }),
+};

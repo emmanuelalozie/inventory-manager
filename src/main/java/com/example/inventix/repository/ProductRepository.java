@@ -15,7 +15,20 @@ public interface ProductRepository extends JpaRepository<Product, Long> {
 
     boolean existsBySkuAndIdNot(String sku, Long id);
 
+    boolean existsBySupplierId(Long supplierId);
+
+    @Query("select count(l) > 0 from PurchaseOrderLine l where l.product.id = :productId")
+    boolean isOnPurchaseOrder(@Param("productId") Long productId);
+
+    @Query("select count(r) > 0 from ProductionRun r where r.product.id = :productId")
+    boolean isOnProductionRun(@Param("productId") Long productId);
+
     List<Product> findByQuantityLessThanEqualOrderByQuantityAsc(Integer threshold);
+
+    /** Products with a reorder point whose stock is at or below it, lowest stock first. */
+    @Query("select p from Product p where p.reorderPoint is not null and p.quantity <= p.reorderPoint"
+            + " order by p.quantity asc, p.name asc")
+    List<Product> findAtOrBelowReorderPoint();
 
     /**
      * Products whose name, SKU or description contains the pattern (a lower-case LIKE pattern with '\' as the

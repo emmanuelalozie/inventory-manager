@@ -8,12 +8,15 @@ import com.example.inventix.exception.ProductNotFoundException;
 import com.example.inventix.exception.QuantityChangeNotAllowedException;
 import com.example.inventix.model.MovementReason;
 import com.example.inventix.model.Product;
+import com.example.inventix.model.ProductSource;
 import com.example.inventix.model.StockMovement;
 import com.example.inventix.repository.OrderItemRepository;
 import com.example.inventix.repository.ProductRepository;
+import com.example.inventix.repository.SupplierRepository;
 import com.example.inventix.repository.StockMovementRepository;
 import com.example.inventix.service.Paging;
 import com.example.inventix.service.ProductService;
+import com.example.inventix.service.StockReference;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.orm.ObjectOptimisticLockingFailureException;
@@ -35,13 +38,15 @@ public class ProductServiceImpl implements ProductService {
     private final ProductRepository productRepository;
     private final OrderItemRepository orderItemRepository;
     private final StockMovementRepository stockMovementRepository;
+    private final SupplierRepository supplierRepository;
 
     @Autowired
     public ProductServiceImpl(ProductRepository productRepository, OrderItemRepository orderItemRepository,
-                              StockMovementRepository stockMovementRepository) {
+                              StockMovementRepository stockMovementRepository, SupplierRepository supplierRepository) {
         this.productRepository = productRepository;
         this.orderItemRepository = orderItemRepository;
         this.stockMovementRepository = stockMovementRepository;
+        this.supplierRepository = supplierRepository;
     }
 
     @Override
@@ -49,6 +54,7 @@ public class ProductServiceImpl implements ProductService {
         product.setId(null); // always insert, never overwrite an existing product
         product.setVersion(null); // a client-sent version would make Spring Data treat the product as existing
         product.setSku(normalizeSku(product.getSku()));
+        checkSourcing(product);
         if (productRepository.existsBySku(product.getSku())) {
             throw new DuplicateSkuException("A product with SKU '" + product.getSku() + "' already exists");
         }
@@ -57,7 +63,7 @@ public class ProductServiceImpl implements ProductService {
         Product saved = productRepository.save(product);
         // The starting stock is the product's first ledger entry, so its movements add up to its quantity.
         if (initialQuantity != 0) {
-            recordMovement(saved, initialQuantity, MovementReason.ADJUSTMENT, INITIAL_STOCK_NOTE, null);
+            recordMovement(saved, initialQuantity, MovementReason.ADJUSTMENT, INITIAL_STOCK_NOTE, StockReference.NONE);
         }
         return saved;
     }
@@ -80,6 +86,7 @@ public class ProductServiceImpl implements ProductService {
         }
 
         productDetails.setSku(normalizeSku(productDetails.getSku()));
+        checkSourcing(productDetails);
         if (productRepository.existsBySkuAndIdNot(productDetails.getSku(), id)) {
             throw new DuplicateSkuException("A product with SKU '" + productDetails.getSku() + "' already exists");
         }
@@ -88,6 +95,10 @@ public class ProductServiceImpl implements ProductService {
         existingProduct.setSku(productDetails.getSku());
         existingProduct.setDescription(productDetails.getDescription());
         existingProduct.setPrice(productDetails.getPrice());
+        existingProduct.setSource(productDetails.getSource());
+        existingProduct.setSupplierId(productDetails.getSupplierId());
+        existingProduct.setReorderPoint(productDetails.getReorderPoint());
+        existingProduct.setReorderQuantity(productDetails.getReorderQuantity());
 
         return productRepository.save(existingProduct);
     }
@@ -118,7 +129,8 @@ public class ProductServiceImpl implements ProductService {
     }
 
     @Override
-    public Product adjustStock(Long productId, int delta, MovementReason reason, String note, Long orderId) {
+    public Product changeStock(Long productId, int delta, MovementReason reason, String note,
+                               StockReference reference) {
         if (reason == null) {
             throw new BadRequestException("reason is required");
         }
@@ -143,7 +155,7 @@ public class ProductServiceImpl implements ProductService {
         }
         product.setQuantity((int) newQuantity);
         Product saved = productRepository.save(product);
-        recordMovement(saved, delta, reason, cleanNote, orderId);
+        recordMovement(saved, delta, reason, cleanNote, reference == null ? StockReference.NONE : reference);
         return saved;
     }
 
@@ -155,13 +167,23 @@ public class ProductServiceImpl implements ProductService {
         if (orderItemRepository.existsByProductId(id)) {
             throw new ProductInUseException("Product " + id + " is used by existing orders and cannot be deleted");
         }
+        if (productRepository.isOnPurchaseOrder(id)) {
+            throw new ProductInUseException("Product " + id + " is on purchase orders and cannot be deleted");
+        }
+        if (productRepository.isOnProductionRun(id)) {
+            throw new ProductInUseException("Product " + id + " has production runs and cannot be deleted");
+        }
         // The ledger rows point at the product (foreign key), so its history goes with it.
         stockMovementRepository.deleteByProductId(id);
         productRepository.deleteById(id);
     }
 
-    private void recordMovement(Product product, int delta, MovementReason reason, String note, Long orderId) {
-        stockMovementRepository.save(new StockMovement(product, delta, reason, note, orderId));
+    private void recordMovement(Product product, int delta, MovementReason reason, String note,
+                                StockReference reference) {
+        StockMovement movement = new StockMovement(product, delta, reason, note, reference.orderId());
+        movement.setPurchaseOrderId(reference.purchaseOrderId());
+        movement.setProductionRunId(reference.productionRunId());
+        stockMovementRepository.save(movement);
     }
 
     // SKUs are compared and stored trimmed and upper-case, so "abc-1 " and "ABC-1" can't both exist.
@@ -172,5 +194,22 @@ public class ProductServiceImpl implements ProductService {
     // Makes % and _ in a search term match literally (the queries use '\' as the LIKE escape character).
     private static String escapeLike(String text) {
         return text.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_");
+    }
+
+    // Made products have no supplier, and a supplier must exist. A missing source means BUY.
+    private void checkSourcing(Product product) {
+        if (product.getSource() == null) {
+            product.setSource(ProductSource.BUY);
+        }
+        Long supplierId = product.getSupplierId();
+        if (supplierId == null) {
+            return;
+        }
+        if (product.getSource() == ProductSource.MAKE) {
+            throw new BadRequestException("Products made in-house have no supplier; leave supplierId out");
+        }
+        if (!supplierRepository.existsById(supplierId)) {
+            throw new BadRequestException("Supplier " + supplierId + " doesn't exist");
+        }
     }
 }

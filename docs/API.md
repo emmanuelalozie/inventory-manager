@@ -57,6 +57,10 @@ If the Tauri app sets `app.security.csp`, its `connect-src` must include `http:/
   "description": "2.4 GHz wireless optical mouse",
   "price": 24.99,
   "quantity": 120,
+  "source": "BUY",
+  "supplierId": 2,
+  "reorderPoint": 20,
+  "reorderQuantity": 100,
   "createdAt": "2026-10-04T10:15:30.123456",
   "updatedAt": null,
   "version": 0
@@ -64,7 +68,7 @@ If the Tauri app sets `app.security.csp`, its `connect-src` must include `http:/
 ```
 
 Requests to `POST` and `PUT /api/products` use `ProductRequest`: `name`, `sku`, `description`, `price`,
-`quantity` and `version`. Any other field (`id`, `createdAt`, `updatedAt`, …) is ignored.
+`quantity`, `source`, `supplierId`, `reorderPoint`, `reorderQuantity` and `version`. Any other field (`id`, `createdAt`, `updatedAt`, …) is ignored.
 
 | Field | Type | Rules |
 |---|---|---|
@@ -74,8 +78,15 @@ Requests to `POST` and `PUT /api/products` use `ProductRequest`: `name`, `sku`, 
 | `description` | string or null | Optional, max 1000 characters |
 | `price` | number | Required, >= 0 |
 | `quantity` | integer | The stock on hand, >= 0. Required on `POST` (the starting stock). Optional on `PUT`, and it can't change there (see [`PUT /api/products/{id}`](#put-apiproductsid)). |
+| `source` | string | `BUY` (from a supplier, the default) or `MAKE` (made in-house). Decides what [Restock](#restock) does. |
+| `supplierId` | number or null | The supplier a `BUY` product is ordered from. Must be an existing supplier (**400** otherwise), and must be left out for `MAKE` products (**400**). |
+| `reorderPoint` | integer or null | >= 0. The product appears on the [reorder list](#get-apireorder-list) when `quantity <= reorderPoint`. |
+| `reorderQuantity` | integer or null | > 0. How many Restock orders or plans to make. |
 | `createdAt`, `updatedAt` | string | Read-only, set by the server |
 | `version` | integer | Optimistic-lock counter, set by the server. Starts at `0` and goes up on every change (including stock changes from orders). Ignored on `POST`. Optional on `PUT`: if sent, it must match the stored value or the call fails with **409**. |
+
+`PUT` replaces `source`, `supplierId`, `reorderPoint` and `reorderQuantity` like the other fields, so leaving them
+out clears them (and `source` falls back to `BUY`).
 
 ### Order (`OrderResponse`)
 
@@ -173,7 +184,8 @@ changed or deleted through the API.
 | `reason` | string | One of the `MovementReason` values below |
 | `note` | string or null | Free text, max 500 characters. Always set for `ADJUSTMENT`. Order movements get a generated note, e.g. `"Order #5 cancelled"`. |
 | `orderId` | number or null | The order that caused the change. Kept after a `PENDING` order is deleted, so it can point to an order that no longer exists. |
-| `purchaseOrderId` | number or null | Reserved for purchase-order receipts. Always `null` for now. |
+| `purchaseOrderId` | number or null | The purchase order a `RECEIPT` was booked on |
+| `productionRunId` | number or null | The production run a `PRODUCTION` movement came from |
 | `locationId` | number or null | Reserved for multiple locations. Always `null` for now. |
 | `createdAt` | string | When the change was made (local date-time, no zone) |
 
@@ -183,8 +195,8 @@ changed or deleted through the API.
 |---|---|
 | `SALE` | An item is added to an order, or an item's quantity is raised |
 | `CANCEL` | An item is removed or its quantity lowered, an order is replaced with `PUT`, cancelled, or deleted while `PENDING` |
-| `RECEIPT` | Stock received from a supplier. Reserved: no endpoint writes it yet. |
-| `PRODUCTION` | Stock made in-house. Reserved: no endpoint writes it yet. |
+| `RECEIPT` | Stock received on a purchase order (`POST /api/purchase-orders/{id}/receipts`) |
+| `PRODUCTION` | A production run is completed (`PATCH /api/production-runs/{id}/status`) |
 | `ADJUSTMENT` | `PATCH /api/products/{id}/stock` (note required), and the starting stock of a new product (note `"Initial stock"`) |
 
 ### Backup (`BackupResponse`)
@@ -289,6 +301,27 @@ For nested fields, `field` uses paths like `items[0].quantity`.
 | PUT | `/api/orders/{orderId}/items/{itemId}` | 200 | Change an item's quantity |
 | DELETE | `/api/orders/{orderId}/items/{itemId}` | 204 | Remove an item from a `PENDING` order |
 | POST | `/api/backup` | 201 | Write a backup zip of the database |
+| GET | `/api/suppliers` | 200 | List suppliers by name |
+| GET | `/api/suppliers/{id}` | 200 | Get one supplier |
+| POST | `/api/suppliers` | 201 | Create a supplier |
+| PUT | `/api/suppliers/{id}` | 200 | Replace a supplier's fields |
+| DELETE | `/api/suppliers/{id}` | 204 | Delete a supplier no product or purchase order uses |
+| GET | `/api/purchase-orders` | 200 | List purchase orders, newest first (optional `?status=&supplierId=&page=&size=`) |
+| GET | `/api/purchase-orders/{id}` | 200 | Get one purchase order with its lines |
+| POST | `/api/purchase-orders` | 201 | Create a `DRAFT` purchase order |
+| PUT | `/api/purchase-orders/{id}` | 200 | Replace a `DRAFT`'s supplier, notes and lines |
+| PATCH | `/api/purchase-orders/{id}/status` | 200 | Order, cancel or close a purchase order |
+| POST | `/api/purchase-orders/{id}/receipts` | 200 | Receive stock on some or all lines |
+| DELETE | `/api/purchase-orders/{id}` | 204 | Delete a `DRAFT` or `CANCELLED` purchase order |
+| GET | `/api/production-runs` | 200 | List production runs, newest first (optional `?status=&productId=&page=&size=`) |
+| GET | `/api/production-runs/{id}` | 200 | Get one production run |
+| POST | `/api/production-runs` | 201 | Plan a production run |
+| PUT | `/api/production-runs/{id}` | 200 | Change a `PLANNED` run |
+| PATCH | `/api/production-runs/{id}/status` | 200 | Complete (adds stock) or cancel a run |
+| DELETE | `/api/production-runs/{id}` | 204 | Delete a `PLANNED` or `CANCELLED` run |
+| GET | `/api/reorder-list` | 200 | Products at or below their reorder point |
+| POST | `/api/products/{id}/restock` | 200 | Add a product's reorder quantity to a draft purchase order or a planned run |
+| POST | `/api/reorder-list/restock` | 200 | Restock every ready product on the reorder list |
 
 ---
 
@@ -447,7 +480,8 @@ Deletes the product and its stock movements.
 
 - **204**: deleted, no body
 - **404**: no product with that id
-- **409**: the product is used by at least one order item, in any order status
+- **409**: the product is used by at least one order item (in any order status), a purchase order line or a
+  production run
 
 ---
 
@@ -701,6 +735,154 @@ Removes the item, gives its stock back and updates the order's `totalAmount`.
 - **204**: removed, no body
 - **404**: no order with that id, no item with that id, or the item belongs to a different order
 - **409**: the order isn't `PENDING`
+
+### Suppliers
+
+A supplier: `{ "id": 2, "name": "Acme Supply", "email": "orders@acme.test", "phone": null, "notes": null,
+"createdAt": "...", "updatedAt": null, "version": 0 }`.
+
+Requests (`POST`, `PUT`) take `name` (required, max 255, unique ignoring case), `email` (optional, must be an email
+address), `phone` (optional, max 50), `notes` (optional, max 1000) and, on `PUT`, an optional `version`. Blank
+optional fields are stored as `null`.
+
+- `GET /api/suppliers`: **200**, all suppliers by name
+- `POST /api/suppliers`: **201** with `Location`; **400** for a missing name or bad email; **409** if the name is taken
+- `PUT /api/suppliers/{id}`: **200**; **404**; **409** if the name is taken or `version` is stale
+- `DELETE /api/suppliers/{id}`: **204**; **404**; **409** while a product has it as `supplierId` or it has any
+  purchase order (purchase orders are kept as a record)
+
+### Purchase orders
+
+Statuses: `DRAFT` → `ORDERED` → `PARTIALLY_RECEIVED` → `RECEIVED`.
+
+| Change | How |
+|---|---|
+| `DRAFT` → `ORDERED` | `PATCH .../status` `{"status": "ORDERED"}`. Needs at least one line; sets `orderedAt`. |
+| `DRAFT` or `ORDERED` → `CANCELLED` | `PATCH .../status`. Not possible once anything was received. |
+| `ORDERED` → `PARTIALLY_RECEIVED` → `RECEIVED` | Automatic when receiving: `RECEIVED` once every line is in full |
+| `PARTIALLY_RECEIVED` → `CLOSED` | `PATCH .../status`, when the rest won't arrive |
+
+`RECEIVED`, `CLOSED` and `CANCELLED` are final. Other changes return **409**.
+
+```json
+{
+  "id": 1,
+  "supplierId": 2,
+  "supplierName": "Acme Supply",
+  "status": "PARTIALLY_RECEIVED",
+  "notes": "Weekly order",
+  "totalCost": 25.00,
+  "orderedAt": "2026-10-17T09:12:00.123456",
+  "createdAt": "2026-10-17T09:10:00.654321",
+  "updatedAt": "2026-10-17T11:40:00.000001",
+  "version": 3,
+  "lines": [
+    { "id": 7, "productId": 1, "productName": "Wireless Mouse", "productSku": "WM-001",
+      "quantityOrdered": 100, "quantityReceived": 60, "quantityRemaining": 40,
+      "unitCost": 0.25, "lineTotal": 25.00 }
+  ]
+}
+```
+
+`unitCost` is what the supplier charges and is optional; `totalCost` adds up the lines that have one.
+
+#### `POST /api/purchase-orders` and `PUT /api/purchase-orders/{id}`
+
+```json
+{ "supplierId": 2, "notes": "Weekly order", "lines": [{ "productId": 1, "quantity": 100, "unitCost": 0.25 }] }
+```
+
+`POST` creates a `DRAFT` (**201** with `Location`). `PUT` replaces a `DRAFT`'s supplier, notes and lines (**200**),
+with an optional `version`. Each product may appear on one line only.
+
+- **400**: validation failed, unknown supplier, or the same product on two lines
+- **404**: unknown `productId`, or no purchase order with that id
+- **409**: `PUT` on a purchase order that isn't a `DRAFT`, or a stale `version`
+
+#### `POST /api/purchase-orders/{id}/receipts`
+
+Books what arrived, on `ORDERED` or `PARTIALLY_RECEIVED` purchase orders. Lines not listed stay as they are.
+
+```json
+{ "lines": [{ "lineId": 7, "quantity": 60 }], "note": "Delivery note 881" }
+```
+
+Each line adds its quantity to stock with a `RECEIPT` movement (`purchaseOrderId` set, note `"Received on purchase
+order #1: Delivery note 881"`). Everything is checked first, so one bad line books nothing.
+
+- **200**: the updated purchase order
+- **400**: empty `lines`, a quantity below 1, or the same line twice
+- **404**: a `lineId` that isn't on this purchase order
+- **409**: the purchase order can't receive (wrong status), or a quantity is more than the line's
+  `quantityRemaining`. Two receipts at the same moment can also get **409**; reload and try again.
+
+#### `DELETE /api/purchase-orders/{id}`
+
+Only `DRAFT` and `CANCELLED` purchase orders can be deleted (**204**); others return **409**.
+
+### Production runs
+
+Statuses: `PLANNED` → `COMPLETED` or `CANCELLED` (both final). A run only adds a finished product; it doesn't use
+up other products.
+
+```json
+{ "id": 3, "productId": 6, "productName": "Workbench", "productSku": "WB-01", "quantity": 5, "status": "PLANNED",
+  "notes": "Oak batch", "completedAt": null, "createdAt": "...", "updatedAt": null, "version": 0 }
+```
+
+- `POST /api/production-runs` `{"productId": 6, "quantity": 5, "notes": "Oak batch"}`: **201**, status `PLANNED`.
+  Stock doesn't change yet.
+- `PUT /api/production-runs/{id}` (same body plus optional `version`): **200**; **409** unless `PLANNED`
+- `PATCH /api/production-runs/{id}/status` `{"status": "COMPLETED"}`: adds `quantity` to stock with a `PRODUCTION`
+  movement (`productionRunId` set) and sets `completedAt`. `{"status": "CANCELLED"}` changes nothing else. Any
+  other change is **409**.
+- `DELETE /api/production-runs/{id}`: **204** for `PLANNED` or `CANCELLED`; **409** for `COMPLETED` (kept as a record)
+
+### Restock
+
+Restock never orders or makes anything by itself: it fills a draft for someone to review.
+
+#### `GET /api/reorder-list`
+
+Products whose `quantity <= reorderPoint`, lowest stock first.
+
+```json
+[
+  { "productId": 1, "name": "Wireless Mouse", "sku": "WM-001", "source": "BUY", "supplierId": 2,
+    "supplierName": "Acme Supply", "quantity": 12, "reorderPoint": 20, "reorderQuantity": 100,
+    "onOrder": 40, "covered": true, "problem": null }
+]
+```
+
+| Field | Meaning |
+|---|---|
+| `onOrder` | Units still to arrive on `DRAFT`, `ORDERED` and `PARTIALLY_RECEIVED` purchase orders, plus units in `PLANNED` production runs |
+| `covered` | `quantity + onOrder > reorderPoint`, so nothing more is needed |
+| `problem` | Why Restock can't act yet: `"no reorder quantity set"` or `"no supplier set"`; otherwise `null` |
+
+#### `POST /api/products/{id}/restock`
+
+- `BUY` products: adds a line for `reorderQuantity` to the supplier's newest `DRAFT` purchase order, creating the
+  draft if there is none. A product already on that draft is left as it is.
+- `MAKE` products: plans a production run for `reorderQuantity`, unless the product already has a `PLANNED` run.
+
+```json
+{ "productId": 1, "sku": "WM-001", "action": "PURCHASE_ORDER", "purchaseOrderId": 4, "productionRunId": null,
+  "created": true, "added": true, "message": "Added 100 to draft purchase order #4" }
+```
+
+`action` is `PURCHASE_ORDER` or `PRODUCTION_RUN`; `created` says a new draft or run was started, `added` that the
+product was added (false when it was already there). Works whatever the current stock.
+
+- **404**: no product with that id
+- **409**: the product has no `reorderQuantity`, or is `BUY` without a supplier
+
+#### `POST /api/reorder-list/restock`
+
+Restocks every product on the reorder list that has no `problem` and isn't `covered`. Returns one result per
+product on the list; the others have `action: "SKIPPED"` and the reason in `message`.
+
+---
 
 ## Example: calling the API from plain JS
 

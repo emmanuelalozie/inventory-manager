@@ -19,6 +19,9 @@
           <a class="nav-link" href="#/dashboard" data-view="dashboard">Dashboard</a>
           <a class="nav-link" href="#/products" data-view="products">Products</a>
           <a class="nav-link" href="#/orders" data-view="orders">Orders</a>
+          <a class="nav-link" href="#/purchase-orders" data-view="purchase-orders">Purchase orders</a>
+          <a class="nav-link" href="#/production" data-view="production">Production</a>
+          <a class="nav-link" href="#/suppliers" data-view="suppliers">Suppliers</a>
           <a class="nav-link" href="#/settings" data-view="settings">Settings</a>
         </nav>
         <div class="connection" id="connection-status">
@@ -46,6 +49,13 @@
             </div>
           </div>
           <div class="stats" id="dashboard-stats"></div>
+          <div class="card">
+            <div class="card-header">
+              <h2>Reorder</h2>
+              <button type="button" class="button button-small button-primary" id="dashboard-restock-all" disabled>Restock all</button>
+            </div>
+            <div id="dashboard-reorder"></div>
+          </div>
           <div class="grid-2">
             <div class="card">
               <div class="card-header">
@@ -89,6 +99,60 @@
           </div>
           <div class="card card-flush">
             <div id="products-table"></div>
+          </div>
+        </section>
+
+        <!-- Purchase orders -->
+        <section class="view" data-view="purchase-orders" hidden>
+          <div id="po-list-panel">
+            <div class="view-header">
+              <div>
+                <h1>Purchase orders</h1>
+                <p class="muted" id="po-count"></p>
+              </div>
+              <div class="actions">
+                <select id="po-supplier-filter" aria-label="Filter by supplier"><option value="">All suppliers</option></select>
+                <select id="po-status-filter" aria-label="Filter by status"></select>
+                <button type="button" class="button button-primary" id="po-new">New purchase order</button>
+              </div>
+            </div>
+            <div class="card card-flush">
+              <div id="po-table"></div>
+            </div>
+          </div>
+          <div id="po-detail-panel" hidden></div>
+        </section>
+
+        <!-- Production -->
+        <section class="view" data-view="production" hidden>
+          <div class="view-header">
+            <div>
+              <h1>Production</h1>
+              <p class="muted" id="production-count"></p>
+            </div>
+            <div class="actions">
+              <select id="production-status-filter" aria-label="Filter by status"></select>
+              <button type="button" class="button button-primary" id="production-new">New production run</button>
+            </div>
+          </div>
+          <div class="card card-flush">
+            <div id="production-table"></div>
+          </div>
+        </section>
+
+        <!-- Suppliers -->
+        <section class="view" data-view="suppliers" hidden>
+          <div class="view-header">
+            <div>
+              <h1>Suppliers</h1>
+              <p class="muted" id="suppliers-count"></p>
+            </div>
+            <div class="actions">
+              <button type="button" class="button button-primary" id="suppliers-new">New supplier</button>
+            </div>
+          </div>
+          <div class="card card-flush">
+            <div id="suppliers-table"></div>
           </div>
         </section>
 

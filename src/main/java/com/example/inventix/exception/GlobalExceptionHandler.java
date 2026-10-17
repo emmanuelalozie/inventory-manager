@@ -32,7 +32,8 @@ public class GlobalExceptionHandler {
     @ExceptionHandler({
             ProductNotFoundException.class,
             OrderNotFoundException.class,
-            OrderItemNotFoundException.class
+            OrderItemNotFoundException.class,
+            NotFoundException.class
     })
     public ResponseEntity<ApiError> handleNotFound(RuntimeException ex, HttpServletRequest request) {
         return build(HttpStatus.NOT_FOUND, ex.getMessage(), request, null);
@@ -43,7 +44,8 @@ public class GlobalExceptionHandler {
             InvalidOrderStateException.class,
             DuplicateSkuException.class,
             ProductInUseException.class,
-            BackupNotAvailableException.class
+            BackupNotAvailableException.class,
+            ConflictException.class
     })
     public ResponseEntity<ApiError> handleConflict(RuntimeException ex, HttpServletRequest request) {
         return build(HttpStatus.CONFLICT, ex.getMessage(), request, null);
