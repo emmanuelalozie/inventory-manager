@@ -17,8 +17,9 @@ import java.math.BigDecimal;
  * quantity is the starting stock on POST (required). On PUT it is optional: leave it out, or send the stored
  * value; a different value is rejected, because stock only changes through PATCH /api/products/{id}/stock.
  * <p>
- * source (BUY by default), supplierId, reorderPoint and reorderQuantity describe how the product is replenished.
- * PUT replaces them like the other fields, so a client that leaves them out clears them.
+ * source (BUY by default), supplierId, reorderPoint and reorderQuantity describe how the product is replenished;
+ * categoryId and unitCost are optional too. PUT replaces all of them like the other fields, so a client that
+ * leaves them out clears them.
  */
 public record ProductRequest(
         @NotBlank(message = "Name is required")
@@ -50,6 +51,11 @@ public record ProductRequest(
         @Positive(message = "Reorder quantity must be greater than 0")
         Integer reorderQuantity,
 
+        Long categoryId,
+
+        @PositiveOrZero(message = "Unit cost must be zero or greater")
+        BigDecimal unitCost,
+
         Long version) {
 
     /** Validation group for rules that only apply when creating a product. */
@@ -67,6 +73,8 @@ public record ProductRequest(
         product.setSupplierId(supplierId);
         product.setReorderPoint(reorderPoint);
         product.setReorderQuantity(reorderQuantity);
+        product.setCategoryId(categoryId);
+        product.setUnitCost(unitCost);
         product.setVersion(version);
         return product;
     }

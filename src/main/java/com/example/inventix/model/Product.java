@@ -68,6 +68,14 @@ public class Product {
     @Column(name = "reorder_quantity")
     private Integer reorderQuantity;
 
+    // Plain id with a foreign key, like supplierId.
+    @Column(name = "category_id")
+    private Long categoryId;
+
+    // What one unit costs to buy or make (not the selling price). Updated by purchase-order receipts.
+    @Column(name = "unit_cost", precision = 12, scale = 2)
+    private BigDecimal unitCost;
+
     @Column(name = "created_at", updatable = false)
     private LocalDateTime createdAt;
 

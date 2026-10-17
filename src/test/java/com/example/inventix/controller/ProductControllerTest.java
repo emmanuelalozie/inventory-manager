@@ -74,7 +74,7 @@ class ProductControllerTest {
 
     @Test
     void testGetAllProducts() throws Exception {
-        when(productService.searchProducts(null, null, null, null)).thenReturn(new PageImpl<>(List.of(sampleProduct())));
+        when(productService.searchProducts(null, null, null, null, null)).thenReturn(new PageImpl<>(List.of(sampleProduct())));
 
         mockMvc.perform(get("/api/products"))
                 .andExpect(status().isOk())
@@ -84,7 +84,7 @@ class ProductControllerTest {
 
     @Test
     void getAllProducts_passesSearchPagingAndSort() throws Exception {
-        when(productService.searchProducts("mouse", 2, 20, "name,desc"))
+        when(productService.searchProducts("mouse", null, 2, 20, "name,desc"))
                 .thenReturn(new PageImpl<>(List.of(sampleProduct()), PageRequest.of(2, 20), 41));
 
         mockMvc.perform(get("/api/products")
@@ -96,7 +96,7 @@ class ProductControllerTest {
 
     @Test
     void corsExposesTotalCountHeader() throws Exception {
-        when(productService.searchProducts(null, null, null, null)).thenReturn(new PageImpl<>(List.of()));
+        when(productService.searchProducts(null, null, null, null, null)).thenReturn(new PageImpl<>(List.of()));
 
         mockMvc.perform(get("/api/products").header(HttpHeaders.ORIGIN, "http://tauri.localhost"))
                 .andExpect(header().string(HttpHeaders.ACCESS_CONTROL_EXPOSE_HEADERS, containsString("X-Total-Count")));
@@ -156,7 +156,7 @@ class ProductControllerTest {
 
     @Test
     void unexpectedIllegalArgument_returns400WithoutItsMessage() throws Exception {
-        when(productService.searchProducts(null, null, null, null))
+        when(productService.searchProducts(null, null, null, null, null))
                 .thenThrow(new IllegalArgumentException("internal detail: table PRODUCTS"));
 
         mockMvc.perform(get("/api/products"))

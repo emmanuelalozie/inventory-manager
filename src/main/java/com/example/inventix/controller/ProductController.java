@@ -35,16 +35,17 @@ public class ProductController {
     }
 
     /**
-     * Lists products, optionally filtered by q (name, SKU or description) and paged with page/size.
+     * Lists products, optionally filtered by q (name, SKU or description) and categoryId, and paged with page/size.
      * X-Total-Count holds the number of matches across all pages.
      */
     @GetMapping
     public ResponseEntity<List<ProductResponse>> getAllProducts(
             @RequestParam(required = false) String q,
+            @RequestParam(required = false) Long categoryId,
             @RequestParam(required = false) Integer page,
             @RequestParam(required = false) Integer size,
             @RequestParam(required = false) String sort) {
-        Page<Product> result = productService.searchProducts(q, page, size, sort);
+        Page<Product> result = productService.searchProducts(q, categoryId, page, size, sort);
         return ResponseEntity.ok()
                 .header(WebConfig.TOTAL_COUNT_HEADER, String.valueOf(result.getTotalElements()))
                 .body(ProductResponse.fromAll(result.getContent()));

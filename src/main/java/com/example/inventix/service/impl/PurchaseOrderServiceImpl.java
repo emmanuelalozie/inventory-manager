@@ -152,6 +152,9 @@ public class PurchaseOrderServiceImpl implements PurchaseOrderService {
             productService.changeStock(line.getProduct().getId(), received.quantity(), MovementReason.RECEIPT, note,
                     StockReference.purchaseOrder(id));
             line.setQuantityReceived(line.getQuantityReceived() + received.quantity());
+            if (line.getUnitCost() != null) {
+                line.getProduct().setUnitCost(line.getUnitCost()); // last purchase cost
+            }
         }
 
         order.setStatus(order.isFullyReceived() ? PurchaseOrderStatus.RECEIVED : PurchaseOrderStatus.PARTIALLY_RECEIVED);

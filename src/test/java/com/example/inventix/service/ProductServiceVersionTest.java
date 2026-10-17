@@ -1,6 +1,7 @@
 package com.example.inventix.service;
 
 import com.example.inventix.model.Product;
+import com.example.inventix.repository.CategoryRepository;
 import com.example.inventix.repository.OrderItemRepository;
 import com.example.inventix.repository.ProductRepository;
 import com.example.inventix.repository.StockMovementRepository;
@@ -42,6 +43,9 @@ class ProductServiceVersionTest {
 
     @Mock
     private SupplierRepository supplierRepository;
+
+    @Mock
+    private CategoryRepository categoryRepository;
 
     @InjectMocks
     private ProductServiceImpl productService;

@@ -15,6 +15,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -302,4 +303,41 @@ class InventixApplicationTests {
                 .andExpect(jsonPath("$[?(@.sku == 'E2E-NUT')].onOrder").value(100))
                 .andExpect(jsonPath("$[?(@.sku == 'E2E-NUT')].covered").value(true));
     }
+
+    @Test
+    void reportsAndCsvExports_overHttp() throws Exception {
+        int categoryId = postForId("/api/categories", "{\"name\":\"E2E Tools\"}");
+        postForId("/api/products", "{\"name\":\"E2E Hammer, steel\",\"sku\":\"E2E-HAM\",\"price\":12.50,"
+                + "\"quantity\":4,\"categoryId\":" + categoryId + ",\"unitCost\":7.25}");
+
+        mockMvc.perform(get("/api/categories"))
+                .andExpect(jsonPath("$[?(@.name == 'E2E Tools')].productCount").value(1));
+        mockMvc.perform(get("/api/products").param("categoryId", String.valueOf(categoryId)))
+                .andExpect(jsonPath("$", hasSize(1)))
+                .andExpect(jsonPath("$[0].unitCost").value(7.25));
+        mockMvc.perform(get("/api/reports/stock-value"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.categories[?(@.categoryName == 'E2E Tools')].valueAtCost").value(29.0));
+        mockMvc.perform(get("/api/reports/movements").param("from", "2000-01-01"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[?(@.reason == 'ADJUSTMENT')].unitsIn").exists());
+        mockMvc.perform(get("/api/reports/top-sellers").param("limit", "5")).andExpect(status().isOk());
+        mockMvc.perform(get("/api/stock-movements").param("from", "2000-01-01").param("to", "2999-12-31"))
+                .andExpect(status().isOk())
+                .andExpect(header().exists("X-Total-Count"));
+
+        String csv = mockMvc.perform(get("/api/export/products.csv"))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Content-Type", "text/csv;charset=UTF-8"))
+                .andExpect(header().string("Content-Disposition", org.hamcrest.Matchers.startsWith("attachment; filename=\"products-")))
+                .andReturn().getResponse().getContentAsString(java.nio.charset.StandardCharsets.UTF_8);
+        assertThat(csv).startsWith("\uFEFFid,sku,name,category,");
+        assertThat(csv).contains("E2E-HAM,\"E2E Hammer, steel\",E2E Tools,BUY,,12.50,7.25,4,,,50.00,29.00");
+
+        mockMvc.perform(get("/api/export/stock-movements.csv").param("from", "2000-01-01")).andExpect(status().isOk());
+        mockMvc.perform(get("/api/export/stock-value.csv")).andExpect(status().isOk());
+        mockMvc.perform(get("/api/export/top-sellers.csv")).andExpect(status().isOk());
+        mockMvc.perform(delete("/api/categories/{id}", categoryId)).andExpect(status().isConflict());
+    }
 }
+
