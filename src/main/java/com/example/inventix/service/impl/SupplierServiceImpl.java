@@ -4,6 +4,7 @@ import com.example.inventix.exception.ConflictException;
 import com.example.inventix.exception.NotFoundException;
 import com.example.inventix.model.Supplier;
 import com.example.inventix.repository.ProductRepository;
+import com.example.inventix.repository.PurchaseOrderRepository;
 import com.example.inventix.repository.SupplierRepository;
 import com.example.inventix.service.SupplierService;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -19,11 +20,14 @@ public class SupplierServiceImpl implements SupplierService {
 
     private final SupplierRepository supplierRepository;
     private final ProductRepository productRepository;
+    private final PurchaseOrderRepository purchaseOrderRepository;
 
     @Autowired
-    public SupplierServiceImpl(SupplierRepository supplierRepository, ProductRepository productRepository) {
+    public SupplierServiceImpl(SupplierRepository supplierRepository, ProductRepository productRepository,
+                               PurchaseOrderRepository purchaseOrderRepository) {
         this.supplierRepository = supplierRepository;
         this.productRepository = productRepository;
+        this.purchaseOrderRepository = purchaseOrderRepository;
     }
 
     @Override
@@ -71,6 +75,10 @@ public class SupplierServiceImpl implements SupplierService {
         if (productRepository.existsBySupplierId(id)) {
             throw new ConflictException("Supplier '" + supplier.getName()
                     + "' is set as the supplier of products. Change those products first.");
+        }
+        if (purchaseOrderRepository.existsBySupplierId(id)) {
+            throw new ConflictException("Supplier '" + supplier.getName()
+                    + "' has purchase orders, which are kept as a record, so it can't be deleted.");
         }
         supplierRepository.delete(supplier);
     }

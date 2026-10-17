@@ -44,7 +44,14 @@ public interface ProductService {
      * @throws com.example.inventix.exception.BadRequestException if delta is 0, the reason is missing, or an adjustment has no note
      * @throws com.example.inventix.exception.InsufficientStockException if the stock would go below zero
      */
-    Product adjustStock(Long productId, int delta, MovementReason reason, String note, Long orderId);
+    default Product adjustStock(Long productId, int delta, MovementReason reason, String note, Long orderId) {
+        return changeStock(productId, delta, reason, note, StockReference.order(orderId));
+    }
+
+    /**
+     * Like {@link #adjustStock}, with the order, purchase order or production run that caused the change.
+     */
+    Product changeStock(Long productId, int delta, MovementReason reason, String note, StockReference reference);
 
     void deleteProduct(Long id);
 }

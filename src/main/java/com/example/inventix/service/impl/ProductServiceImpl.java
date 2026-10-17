@@ -16,6 +16,7 @@ import com.example.inventix.repository.SupplierRepository;
 import com.example.inventix.repository.StockMovementRepository;
 import com.example.inventix.service.Paging;
 import com.example.inventix.service.ProductService;
+import com.example.inventix.service.StockReference;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.orm.ObjectOptimisticLockingFailureException;
@@ -62,7 +63,7 @@ public class ProductServiceImpl implements ProductService {
         Product saved = productRepository.save(product);
         // The starting stock is the product's first ledger entry, so its movements add up to its quantity.
         if (initialQuantity != 0) {
-            recordMovement(saved, initialQuantity, MovementReason.ADJUSTMENT, INITIAL_STOCK_NOTE, null);
+            recordMovement(saved, initialQuantity, MovementReason.ADJUSTMENT, INITIAL_STOCK_NOTE, StockReference.NONE);
         }
         return saved;
     }
@@ -128,7 +129,8 @@ public class ProductServiceImpl implements ProductService {
     }
 
     @Override
-    public Product adjustStock(Long productId, int delta, MovementReason reason, String note, Long orderId) {
+    public Product changeStock(Long productId, int delta, MovementReason reason, String note,
+                               StockReference reference) {
         if (reason == null) {
             throw new BadRequestException("reason is required");
         }
@@ -153,7 +155,7 @@ public class ProductServiceImpl implements ProductService {
         }
         product.setQuantity((int) newQuantity);
         Product saved = productRepository.save(product);
-        recordMovement(saved, delta, reason, cleanNote, orderId);
+        recordMovement(saved, delta, reason, cleanNote, reference == null ? StockReference.NONE : reference);
         return saved;
     }
 
@@ -165,13 +167,19 @@ public class ProductServiceImpl implements ProductService {
         if (orderItemRepository.existsByProductId(id)) {
             throw new ProductInUseException("Product " + id + " is used by existing orders and cannot be deleted");
         }
+        if (productRepository.isOnPurchaseOrder(id)) {
+            throw new ProductInUseException("Product " + id + " is on purchase orders and cannot be deleted");
+        }
         // The ledger rows point at the product (foreign key), so its history goes with it.
         stockMovementRepository.deleteByProductId(id);
         productRepository.deleteById(id);
     }
 
-    private void recordMovement(Product product, int delta, MovementReason reason, String note, Long orderId) {
-        stockMovementRepository.save(new StockMovement(product, delta, reason, note, orderId));
+    private void recordMovement(Product product, int delta, MovementReason reason, String note,
+                                StockReference reference) {
+        StockMovement movement = new StockMovement(product, delta, reason, note, reference.orderId());
+        movement.setPurchaseOrderId(reference.purchaseOrderId());
+        stockMovementRepository.save(movement);
     }
 
     // SKUs are compared and stored trimmed and upper-case, so "abc-1 " and "ABC-1" can't both exist.

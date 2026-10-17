@@ -201,4 +201,59 @@ class InventixApplicationTests {
                 .andExpect(jsonPath("$.status").value(404))
                 .andExpect(jsonPath("$.path").value("/api/orders/999999"));
     }
+
+    private int postForId(String url, String json) throws Exception {
+        String body = mockMvc.perform(post(url).contentType(MediaType.APPLICATION_JSON).content(json))
+                .andExpect(status().isCreated())
+                .andReturn().getResponse().getContentAsString();
+        return objectMapper.readTree(body).get("id").asInt();
+    }
+
+    @Test
+    void purchaseOrder_overHttp_receivesInParts() throws Exception {
+        int supplierId = postForId("/api/suppliers", "{\"name\":\"E2E Supplier\",\"email\":\"orders@e2e.test\"}");
+        int productId = postForId("/api/products", "{\"name\":\"E2E Bolt\",\"sku\":\"E2E-BOLT\",\"price\":0.50,"
+                + "\"quantity\":3,\"supplierId\":" + supplierId + ",\"reorderPoint\":5,\"reorderQuantity\":20}");
+
+        String created = mockMvc.perform(post("/api/purchase-orders").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"supplierId\":" + supplierId + ",\"lines\":[{\"productId\":" + productId
+                                + ",\"quantity\":20,\"unitCost\":0.20}]}"))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.status").value("DRAFT"))
+                .andExpect(jsonPath("$.supplierName").value("E2E Supplier"))
+                .andExpect(jsonPath("$.totalCost").value(4.0))
+                .andExpect(jsonPath("$.lines[0].productSku").value("E2E-BOLT"))
+                .andReturn().getResponse().getContentAsString();
+        int poId = objectMapper.readTree(created).get("id").asInt();
+        int lineId = objectMapper.readTree(created).get("lines").get(0).get("id").asInt();
+
+        mockMvc.perform(patch("/api/purchase-orders/{id}/status", poId).contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"status\":\"ORDERED\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("ORDERED"));
+
+        mockMvc.perform(post("/api/purchase-orders/{id}/receipts", poId).contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"lines\":[{\"lineId\":" + lineId + ",\"quantity\":15}]}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("PARTIALLY_RECEIVED"))
+                .andExpect(jsonPath("$.lines[0].quantityRemaining").value(5));
+
+        mockMvc.perform(post("/api/purchase-orders/{id}/receipts", poId).contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"lines\":[{\"lineId\":" + lineId + ",\"quantity\":6}]}"))
+                .andExpect(status().isConflict());
+
+        mockMvc.perform(get("/api/products/{id}", productId))
+                .andExpect(jsonPath("$.quantity").value(18))
+                .andExpect(jsonPath("$.supplierId").value(supplierId))
+                .andExpect(jsonPath("$.reorderPoint").value(5));
+
+        mockMvc.perform(get("/api/products/{id}/movements", productId))
+                .andExpect(jsonPath("$[0].reason").value("RECEIPT"))
+                .andExpect(jsonPath("$[0].purchaseOrderId").value(poId));
+
+        mockMvc.perform(get("/api/purchase-orders").param("supplierId", String.valueOf(supplierId)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$", hasSize(1)))
+                .andExpect(jsonPath("$[0].lines[0].quantityReceived").value(15));
+    }
 }

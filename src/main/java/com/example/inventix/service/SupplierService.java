@@ -25,7 +25,7 @@ public interface SupplierService {
     Supplier updateSupplier(Long id, Supplier supplier);
 
     /**
-     * @throws com.example.inventix.exception.ConflictException if products or purchase orders still use the supplier
+     * @throws com.example.inventix.exception.ConflictException if products or purchase orders use the supplier
      */
     void deleteSupplier(Long id);
 }

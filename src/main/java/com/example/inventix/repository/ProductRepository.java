@@ -17,6 +17,9 @@ public interface ProductRepository extends JpaRepository<Product, Long> {
 
     boolean existsBySupplierId(Long supplierId);
 
+    @Query("select count(l) > 0 from PurchaseOrderLine l where l.product.id = :productId")
+    boolean isOnPurchaseOrder(@Param("productId") Long productId);
+
     List<Product> findByQuantityLessThanEqualOrderByQuantityAsc(Integer threshold);
 
     /**
