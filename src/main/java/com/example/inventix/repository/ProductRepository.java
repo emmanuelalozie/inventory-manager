@@ -25,6 +25,11 @@ public interface ProductRepository extends JpaRepository<Product, Long> {
 
     List<Product> findByQuantityLessThanEqualOrderByQuantityAsc(Integer threshold);
 
+    /** Products with a reorder point whose stock is at or below it, lowest stock first. */
+    @Query("select p from Product p where p.reorderPoint is not null and p.quantity <= p.reorderPoint"
+            + " order by p.quantity asc, p.name asc")
+    List<Product> findAtOrBelowReorderPoint();
+
     /**
      * Products whose name, SKU or description contains the pattern (a lower-case LIKE pattern with '\' as the
      * escape character), or all products when it is null.

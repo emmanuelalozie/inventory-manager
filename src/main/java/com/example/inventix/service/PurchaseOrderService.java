@@ -51,10 +51,10 @@ public interface PurchaseOrderService {
      * Adds {@code quantity} of a product to the supplier's newest DRAFT, creating the draft if there is none.
      * A product already on that draft is left as it is.
      *
-     * @return the draft, and whether a line was added
+     * @return the draft, whether it was newly created, and whether a line was added
      */
     DraftAddition addToDraft(Long supplierId, Long productId, int quantity);
 
-    record DraftAddition(PurchaseOrder purchaseOrder, boolean lineAdded) {
+    record DraftAddition(PurchaseOrder purchaseOrder, boolean created, boolean lineAdded) {
     }
 }

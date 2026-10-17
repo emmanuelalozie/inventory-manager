@@ -176,16 +176,17 @@ public class PurchaseOrderServiceImpl implements PurchaseOrderService {
         PurchaseOrder draft = purchaseOrderRepository
                 .findFirstBySupplierIdAndStatusOrderByIdDesc(supplierId, PurchaseOrderStatus.DRAFT)
                 .orElse(null);
-        if (draft == null) {
+        boolean created = draft == null;
+        if (created) {
             draft = new PurchaseOrder();
             draft.setStatus(PurchaseOrderStatus.DRAFT);
             draft.setSupplier(findSupplier(supplierId));
         } else if (draft.getLines().stream().anyMatch(line -> line.getProduct().getId().equals(productId))) {
-            return new DraftAddition(draft, false);
+            return new DraftAddition(draft, false, false);
         }
         addLines(draft, List.of(new PurchaseOrderRequest.Line(productId, quantity, null)));
         draft.setUpdatedAt(LocalDateTime.now());
-        return new DraftAddition(purchaseOrderRepository.save(draft), true);
+        return new DraftAddition(purchaseOrderRepository.save(draft), created, true);
     }
 
     private Supplier findSupplier(Long supplierId) {

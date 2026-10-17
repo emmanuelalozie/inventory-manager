@@ -282,4 +282,24 @@ class InventixApplicationTests {
                 .andExpect(jsonPath("$[0].productionRunId").value(runId));
         mockMvc.perform(delete("/api/production-runs/{id}", runId)).andExpect(status().isConflict());
     }
+
+    @Test
+    void restock_overHttp_fillsADraftPurchaseOrder() throws Exception {
+        int supplierId = postForId("/api/suppliers", "{\"name\":\"E2E Restock Supplier\"}");
+        int productId = postForId("/api/products", "{\"name\":\"E2E Nut\",\"sku\":\"E2E-NUT\",\"price\":0.10,"
+                + "\"quantity\":1,\"supplierId\":" + supplierId + ",\"reorderPoint\":10,\"reorderQuantity\":100}");
+
+        mockMvc.perform(get("/api/reorder-list"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[?(@.sku == 'E2E-NUT')].supplierName").value("E2E Restock Supplier"));
+
+        mockMvc.perform(post("/api/products/{id}/restock", productId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.action").value("PURCHASE_ORDER"))
+                .andExpect(jsonPath("$.created").value(true));
+
+        mockMvc.perform(get("/api/reorder-list"))
+                .andExpect(jsonPath("$[?(@.sku == 'E2E-NUT')].onOrder").value(100))
+                .andExpect(jsonPath("$[?(@.sku == 'E2E-NUT')].covered").value(true));
+    }
 }
