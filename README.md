@@ -28,7 +28,9 @@ for one user on one machine: the API only accepts local connections and has no l
   arrives in as many parts as needed, close them when the rest won't come, or cancel them. Every receipt adds stock
   with a `RECEIPT` movement that points back to the purchase order.
 - Production runs: plan a quantity of a made product, then complete it to add the stock (`PRODUCTION` movement), or
-  cancel it.
+  cancel it. Made products can have components (a bill of materials) that a completed run uses up
+  (`CONSUMPTION` movements); if one is short, nothing changes.
+- Cancel what is still to come on a single purchase order line, and print a purchase order for the supplier.
 - Reorder list and **Restock**: products at or below their reorder point, with what is already on order. Restock
   adds the reorder quantity to the supplier's draft purchase order or plans a production run, for you to review;
   **Restock all** does that for every product that needs it.

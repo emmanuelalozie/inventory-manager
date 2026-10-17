@@ -18,8 +18,10 @@ It covers:
   add items, change item quantities, remove items, change the status (ship, deliver, cancel) and delete orders.
 - **Suppliers:** list, create, edit and delete suppliers.
 - **Purchase orders:** list and filter by status or supplier, draft a purchase order with several lines, mark it as
-  ordered, receive what arrived (in parts), close or cancel it, and delete drafts.
-- **Production:** plan, change, complete (adds the stock) or cancel production runs.
+  ordered, receive what arrived (in parts), cancel the rest of a single line, close or cancel it, delete drafts, and
+  print a copy for the supplier.
+- **Production:** plan, change, complete or cancel production runs. Completing shows which components the run
+  will use and warns when one is short. Made products have a **Components** button for their bill of materials.
 - **Reports:** for a range of days, stock value at price and at cost per category, stock changes per reason and
   top sellers, plus CSV downloads (products, stock value, stock changes, top sellers).
 - **Settings:** the backend URL (default `http://localhost:8080`) and the low-stock threshold, saved in the

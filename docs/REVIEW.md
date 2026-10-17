@@ -81,6 +81,7 @@ Paths below are relative to `src/main/java/com/example/inventix/` unless they st
 | F-18 | **v2 Run 3:** Categories (`/api/categories`, migration `V7`) and a `unitCost` per product; receiving a purchase order line with a cost updates the product's cost. Products can be filtered by `categoryId`. | `model/Category.java`, `service/impl/CategoryServiceImpl.java`, `controller/CategoryController.java`, `V7__categories_and_unit_cost.sql` |
 | F-19 | **v2 Run 3:** Reports (`/api/reports/stock-value`, `/movements`, `/top-sellers`) over whole days (`DateRange`), and `from`/`to` plus `X-Total-Count` on `GET /api/stock-movements`. | `service/impl/ReportServiceImpl.java`, `controller/ReportController.java`, `service/DateRange.java` |
 | F-20 | **v2 Run 3:** CSV export (`/api/export/*.csv`): UTF-8 with BOM, RFC 4180 quoting, formula-like text defused. Desktop Reports view with downloads; category filter, Categories dialog and unit cost in Products. | `export/CsvWriter.java`, `controller/ExportController.java`, `desktop/src/js/reports.js`, `desktop/src/js/products.js` |
+| F-21 | **Run 2 follow-ups:** bills of materials (`/api/products/{id}/components`, migration `V8`) with loop checks; completing a run uses components up (`CONSUMPTION`), all or nothing. Cancelling the rest of one PO line (`quantity_cancelled`, `cancel-remaining`), with orders settling as `CLOSED` or `CANCELLED`. Desktop Components editor, completion preview with shortages, "Cancel rest" and a printable purchase order. | `model/ProductComponent.java`, `service/impl/BillOfMaterialsServiceImpl.java`, `service/impl/ProductionRunServiceImpl.java`, `service/impl/PurchaseOrderServiceImpl.java`, `V8__po_line_cancel_and_components.sql`, `desktop/src/js/purchase-orders.js`, `desktop/src/js/production.js`, `desktop/src/js/products.js` |
 
 **Tests added or updated** (`src/test/java/com/example/inventix/`):
 `controller/ProductControllerTest`, `controller/OrderControllerTest` (new), `service/ProductServiceTest`,
@@ -342,8 +343,8 @@ Done in v2 Run 3: categories, unit cost, reports and CSV export (F-18 to F-20).
 
 Still planned:
 
-- **Run 2 follow-ups:** bills of materials (a production run that uses up components), a purchase order PDF or
-  email to send to the supplier, and partial cancellation of a single line
+- **Run 2 follow-ups still open:** emailing a purchase order straight to the supplier (it can be printed or saved
+  as PDF from the print dialog), and planning component purchases from production runs
 - **Run 3 follow-ups:** charts on the Reports view, a time zone setting for date ranges, costs per receipt (average
   cost) instead of last purchase cost
 - **Later:** ship backend and desktop as one app (Tauri sidecar with a bundled Java runtime), multi-location stock,

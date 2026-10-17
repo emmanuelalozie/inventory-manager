@@ -189,7 +189,7 @@ changed or deleted through the API.
 | `note` | string or null | Free text, max 500 characters. Always set for `ADJUSTMENT`. Order movements get a generated note, e.g. `"Order #5 cancelled"`. |
 | `orderId` | number or null | The order that caused the change. Kept after a `PENDING` order is deleted, so it can point to an order that no longer exists. |
 | `purchaseOrderId` | number or null | The purchase order a `RECEIPT` was booked on |
-| `productionRunId` | number or null | The production run a `PRODUCTION` movement came from |
+| `productionRunId` | number or null | The production run a `PRODUCTION` or `CONSUMPTION` movement came from |
 | `locationId` | number or null | Reserved for multiple locations. Always `null` for now. |
 | `createdAt` | string | When the change was made (local date-time, no zone) |
 
@@ -201,6 +201,7 @@ changed or deleted through the API.
 | `CANCEL` | An item is removed or its quantity lowered, an order is replaced with `PUT`, cancelled, or deleted while `PENDING` |
 | `RECEIPT` | Stock received on a purchase order (`POST /api/purchase-orders/{id}/receipts`) |
 | `PRODUCTION` | A production run is completed (`PATCH /api/production-runs/{id}/status`) |
+| `CONSUMPTION` | Components used up by a completed production run (`productionRunId` set) |
 | `ADJUSTMENT` | `PATCH /api/products/{id}/stock` (note required), and the starting stock of a new product (note `"Initial stock"`) |
 
 ### Backup (`BackupResponse`)
@@ -316,12 +317,15 @@ For nested fields, `field` uses paths like `items[0].quantity`.
 | PUT | `/api/purchase-orders/{id}` | 200 | Replace a `DRAFT`'s supplier, notes and lines |
 | PATCH | `/api/purchase-orders/{id}/status` | 200 | Order, cancel or close a purchase order |
 | POST | `/api/purchase-orders/{id}/receipts` | 200 | Receive stock on some or all lines |
+| POST | `/api/purchase-orders/{id}/lines/{lineId}/cancel-remaining` | 200 | Stop expecting what is still to come on one line |
 | DELETE | `/api/purchase-orders/{id}` | 204 | Delete a `DRAFT` or `CANCELLED` purchase order |
 | GET | `/api/production-runs` | 200 | List production runs, newest first (optional `?status=&productId=&page=&size=`) |
 | GET | `/api/production-runs/{id}` | 200 | Get one production run |
 | POST | `/api/production-runs` | 201 | Plan a production run |
 | PUT | `/api/production-runs/{id}` | 200 | Change a `PLANNED` run |
-| PATCH | `/api/production-runs/{id}/status` | 200 | Complete (adds stock) or cancel a run |
+| PATCH | `/api/production-runs/{id}/status` | 200 | Complete (uses components, adds stock) or cancel a run |
+| GET | `/api/products/{id}/components` | 200 | A made product's components (bill of materials) |
+| PUT | `/api/products/{id}/components` | 200 | Replace a made product's components |
 | DELETE | `/api/production-runs/{id}` | 204 | Delete a `PLANNED` or `CANCELLED` run |
 | GET | `/api/reorder-list` | 200 | Products at or below their reorder point |
 | POST | `/api/products/{id}/restock` | 200 | Add a product's reorder quantity to a draft purchase order or a planned run |
@@ -492,8 +496,8 @@ Deletes the product and its stock movements.
 
 - **204**: deleted, no body
 - **404**: no product with that id
-- **409**: the product is used by at least one order item (in any order status), a purchase order line or a
-  production run
+- **409**: the product is used by at least one order item (in any order status), a purchase order line, a
+  production run, or another product's components. Its own components list is deleted with it.
 
 ---
 
@@ -775,6 +779,7 @@ Statuses: `DRAFT` → `ORDERED` → `PARTIALLY_RECEIVED` → `RECEIVED`.
 | `DRAFT` or `ORDERED` → `CANCELLED` | `PATCH .../status`. Not possible once anything was received. |
 | `ORDERED` → `PARTIALLY_RECEIVED` → `RECEIVED` | Automatic when receiving: `RECEIVED` once every line is in full |
 | `PARTIALLY_RECEIVED` → `CLOSED` | `PATCH .../status`, when the rest won't arrive |
+| `ORDERED` / `PARTIALLY_RECEIVED` → `CLOSED` or `CANCELLED` | Automatic once [cancelling the rest of lines](#post-apipurchase-ordersidlineslineidcancel-remaining) leaves nothing to come: `CLOSED` if anything arrived, `CANCELLED` if nothing did. Receiving the last outstanding units of an order with cancelled quantities also ends in `CLOSED`, not `RECEIVED`. |
 
 `RECEIVED`, `CLOSED` and `CANCELLED` are final. Other changes return **409**.
 
@@ -792,13 +797,14 @@ Statuses: `DRAFT` → `ORDERED` → `PARTIALLY_RECEIVED` → `RECEIVED`.
   "version": 3,
   "lines": [
     { "id": 7, "productId": 1, "productName": "Wireless Mouse", "productSku": "WM-001",
-      "quantityOrdered": 100, "quantityReceived": 60, "quantityRemaining": 40,
+      "quantityOrdered": 100, "quantityReceived": 60, "quantityCancelled": 0, "quantityRemaining": 40,
       "unitCost": 0.25, "lineTotal": 25.00 }
   ]
 }
 ```
 
-`unitCost` is what the supplier charges and is optional; `totalCost` adds up the lines that have one.
+`unitCost` is what the supplier charges and is optional. `quantityRemaining` is ordered − received − cancelled.
+`lineTotal` is `unitCost` × (ordered − cancelled), and `totalCost` adds up the lines that have a cost.
 
 #### `POST /api/purchase-orders` and `PUT /api/purchase-orders/{id}`
 
@@ -830,14 +836,23 @@ order #1: Delivery note 881"`). Everything is checked first, so one bad line boo
 - **409**: the purchase order can't receive (wrong status), or a quantity is more than the line's
   `quantityRemaining`. Two receipts at the same moment can also get **409**; reload and try again.
 
+#### `POST /api/purchase-orders/{id}/lines/{lineId}/cancel-remaining`
+
+Stops expecting what is still to come on one line of an `ORDERED` or `PARTIALLY_RECEIVED` purchase order (it moves
+from `quantityRemaining` to `quantityCancelled`). What already arrived stays. Drafts are edited instead.
+
+- **200**: the updated purchase order (its status settles as described above when nothing is left to come)
+- **404**: the line isn't on this purchase order
+- **409**: the purchase order isn't `ORDERED` or `PARTIALLY_RECEIVED`, or the line has nothing left to come
+
 #### `DELETE /api/purchase-orders/{id}`
 
 Only `DRAFT` and `CANCELLED` purchase orders can be deleted (**204**); others return **409**.
 
 ### Production runs
 
-Statuses: `PLANNED` → `COMPLETED` or `CANCELLED` (both final). A run only adds a finished product; it doesn't use
-up other products.
+Statuses: `PLANNED` → `COMPLETED` or `CANCELLED` (both final). When the product has
+[components](#bills-of-materials), completing a run uses them up.
 
 ```json
 { "id": 3, "productId": 6, "productName": "Workbench", "productSku": "WB-01", "quantity": 5, "status": "PLANNED",
@@ -847,10 +862,24 @@ up other products.
 - `POST /api/production-runs` `{"productId": 6, "quantity": 5, "notes": "Oak batch"}`: **201**, status `PLANNED`.
   Stock doesn't change yet.
 - `PUT /api/production-runs/{id}` (same body plus optional `version`): **200**; **409** unless `PLANNED`
-- `PATCH /api/production-runs/{id}/status` `{"status": "COMPLETED"}`: adds `quantity` to stock with a `PRODUCTION`
-  movement (`productionRunId` set) and sets `completedAt`. `{"status": "CANCELLED"}` changes nothing else. Any
-  other change is **409**.
+- `PATCH /api/production-runs/{id}/status` `{"status": "COMPLETED"}`: takes component quantity × run quantity of
+  each component out of stock (`CONSUMPTION` movements, note `"Used in production run #3"`), then adds `quantity` to
+  stock with a `PRODUCTION` movement, and sets `completedAt`. If any component is short, nothing changes and the
+  call returns **409** naming the product. `{"status": "CANCELLED"}` changes nothing else. Any other change is
+  **409**.
 - `DELETE /api/production-runs/{id}`: **204** for `PLANNED` or `CANCELLED`; **409** for `COMPLETED` (kept as a record)
+
+### Bills of materials
+
+What one unit of a made product (`source: "MAKE"`) uses. Completing a production run takes these out of stock.
+
+- `GET /api/products/{id}/components`: `[{ "componentId": 3, "name": "USB-C Hub", "sku": "HUB-003", "quantity": 2,
+  "inStock": 8 }]`, by name. **404** for an unknown product.
+- `PUT /api/products/{id}/components` `{"components": [{"componentId": 3, "quantity": 2}]}` replaces the whole list
+  (`[]` removes it) and returns the new list. **400** if the product isn't `MAKE`, a component doesn't exist, is the
+  product itself, appears twice, or would make a loop (the component is made, directly or indirectly, from this
+  product).
+- While a product has components, `PUT /api/products/{id}` can't change its `source` to `BUY` (**400**).
 
 ### Restock
 
