@@ -8,6 +8,7 @@ import {
   ordersApi,
   productsApi,
 } from "./api.js";
+import { countLabel } from "./helpers.js";
 import { parseWholeNumber, productOptions } from "./products.js";
 import {
   confirmDialog,
@@ -42,7 +43,11 @@ const STATUS_ACTIONS = {
   },
 };
 
+// The orders loaded so far (newest first, one or more pages) and the number of matches on the backend.
 let orders = [];
+let total = 0;
+let nextPage = 0;
+let loadRequest = 0; // ignores responses to a filter that was replaced by a newer one
 let statusFilter = "";
 let currentOrder = null;
 let pickerProducts = [];
@@ -70,6 +75,10 @@ export function initOrders() {
     const button = event.target.closest("button[data-action]");
     if (button) {
       event.stopPropagation();
+      if (button.dataset.action === "more") {
+        loadOrders({ more: true });
+        return;
+      }
       const order = orders.find((o) => String(o.id) === button.dataset.id);
       if (!order) return;
       if (button.dataset.action === "view") goToOrder(order.id);
@@ -107,13 +116,29 @@ function goToOrder(id) {
 // List
 // ---------------------------------------------------------------------------
 
-async function loadOrders() {
-  if (!orders.length) renderPlaceholder(tableEl(), "loading", "Loading orders…");
+/** Loads the first page for the current filter, or with more, the next page after the orders already shown. */
+async function loadOrders({ more = false } = {}) {
+  const requestId = ++loadRequest;
+  const page = more ? nextPage : 0;
+  const moreButton = tableEl().querySelector('[data-action="more"]');
+  if (more && moreButton) moreButton.disabled = true;
+  if (!more && !orders.length) renderPlaceholder(tableEl(), "loading", "Loading orders…");
   try {
-    orders = await ordersApi.list(statusFilter || undefined);
+    const result = await ordersApi.search({ status: statusFilter || undefined, page });
+    if (requestId !== loadRequest) return;
+    orders = more ? [...orders, ...result.items] : result.items;
+    total = result.total;
+    nextPage = page + 1;
     renderList();
   } catch (error) {
+    if (requestId !== loadRequest) return;
+    if (more) {
+      if (moreButton) moreButton.disabled = false;
+      showError(error, "Could not load more orders");
+      return;
+    }
     orders = [];
+    total = 0;
     countEl().textContent = "";
     showLoadError(tableEl(), error, "Could not load orders");
   }
@@ -128,7 +153,7 @@ function itemSummary(order) {
 
 function renderList() {
   const sorted = [...orders].sort((a, b) => b.id - a.id);
-  countEl().textContent = `${orders.length} ${orders.length === 1 ? "order" : "orders"}`;
+  countEl().textContent = countLabel(orders.length, total, "order");
 
   if (!sorted.length) {
     renderPlaceholder(
@@ -171,7 +196,12 @@ function renderList() {
         </thead>
         <tbody>${rows}</tbody>
       </table>
-    </div>`;
+    </div>
+    ${
+      orders.length < total
+        ? `<div class="list-more"><button type="button" class="button" data-action="more">Load more</button></div>`
+        : ""
+    }`;
 }
 
 // ---------------------------------------------------------------------------
@@ -601,6 +631,7 @@ async function deleteOrder(order) {
     await ordersApi.remove(order.id);
     toast(`Deleted order #${order.id}`, { type: "success" });
     orders = orders.filter((o) => o.id !== order.id);
+    total = Math.max(0, total - 1);
     if (!listPanel().hidden) renderList();
     return true;
   } catch (error) {

@@ -4,6 +4,9 @@
 export const DEFAULT_BASE_URL = "http://localhost:8080";
 const STORAGE_KEY = "inventix.apiBaseUrl";
 const REQUEST_TIMEOUT_MS = 10000;
+const TOTAL_COUNT_HEADER = "X-Total-Count";
+/** Rows per page in the product and order lists. */
+export const LIST_PAGE_SIZE = 50;
 
 /** Error returned by the backend (4xx/5xx) with the JSON error body from docs/API.md. */
 export class ApiError extends Error {
@@ -106,7 +109,14 @@ function notifyBaseUrlChange(url) {
 // Core request
 // ---------------------------------------------------------------------------
 
-async function request(path, { method = "GET", body, headers: extraHeaders, timeoutMs = REQUEST_TIMEOUT_MS } = {}) {
+/**
+ * Sends a request and resolves with the parsed JSON body. With withTotal, resolves with { items, total } instead,
+ * where total comes from the X-Total-Count header (the number of matches across all pages).
+ */
+async function request(
+  path,
+  { method = "GET", body, headers: extraHeaders, timeoutMs = REQUEST_TIMEOUT_MS, withTotal = false } = {}
+) {
   const baseUrl = getBaseUrl();
   const headers = { Accept: "application/json", ...extraHeaders };
   const init = { method, headers };
@@ -153,6 +163,14 @@ async function request(path, { method = "GET", body, headers: extraHeaders, time
   if (!response.ok) {
     throw new ApiError(response.status, data, response.statusText);
   }
+  if (withTotal) {
+    const items = Array.isArray(data) ? data : [];
+    const header = response.headers && typeof response.headers.get === "function"
+      ? response.headers.get(TOTAL_COUNT_HEADER)
+      : null;
+    const total = header === null || header === "" || Number.isNaN(Number(header)) ? items.length : Number(header);
+    return { items, total };
+  }
   return data;
 }
 
@@ -187,7 +205,14 @@ export const MOVEMENTS_PAGE_SIZE = 50;
 // ---------------------------------------------------------------------------
 
 export const productsApi = {
+  /** Every product, unpaged (used where the whole catalogue is needed, e.g. the dashboard and order pickers). */
   list: () => request("/api/products"),
+  /**
+   * One page of products matching q (name, SKU or description), sorted by sort ("name", "quantity,desc", ...).
+   * Resolves with { items, total }. page is 0-based.
+   */
+  search: ({ q, page = 0, size = LIST_PAGE_SIZE, sort = "name" } = {}) =>
+    request(`/api/products${query({ q, page, size, sort })}`, { withTotal: true }),
   lowStock: (threshold = 10) =>
     request(`/api/products/low-stock?threshold=${encodeURIComponent(threshold)}`),
   get: (productId) => request(`/api/products/${id(productId)}`),
@@ -230,8 +255,12 @@ export const STATUS_TRANSITIONS = {
 };
 
 export const ordersApi = {
+  /** Every order, unpaged, optionally filtered by status. */
   list: (status) =>
     request(status ? `/api/orders?status=${encodeURIComponent(status)}` : "/api/orders"),
+  /** One page of orders, newest first, optionally filtered by status. Resolves with { items, total }. */
+  search: ({ status, page = 0, size = LIST_PAGE_SIZE } = {}) =>
+    request(`/api/orders${query({ status, page, size })}`, { withTotal: true }),
   get: (orderId) => request(`/api/orders/${id(orderId)}`),
   /**
    * items: [{ productId, quantity }]. Pass the same idempotencyKey when retrying a create that may have

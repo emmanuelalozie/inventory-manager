@@ -13,9 +13,11 @@ import com.example.inventix.service.OrderService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
-import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.math.BigDecimal;
@@ -88,26 +90,25 @@ class OrderControllerTest {
 
     @Test
     void getAllOrders_returnsOrders() throws Exception {
-        when(orderService.getAllOrders()).thenReturn(List.of(order(1L, OrderStatus.PENDING)));
+        when(orderService.searchOrders(null, null, null)).thenReturn(new PageImpl<>(List.of(order(1L, OrderStatus.PENDING))));
 
         mockMvc.perform(get("/api/orders"))
                 .andExpect(status().isOk())
+                .andExpect(header().string("X-Total-Count", "1"))
                 .andExpect(jsonPath("$", hasSize(1)))
                 .andExpect(jsonPath("$[0].status").value("PENDING"));
-
-        verify(orderService, never()).getOrdersByStatus(any());
     }
 
     @Test
-    void getAllOrders_filtersByStatus() throws Exception {
-        when(orderService.getOrdersByStatus(OrderStatus.SHIPPED)).thenReturn(List.of(order(2L, OrderStatus.SHIPPED)));
+    void getAllOrders_filtersByStatusAndPages() throws Exception {
+        when(orderService.searchOrders(OrderStatus.SHIPPED, 1, 10))
+                .thenReturn(new PageImpl<>(List.of(order(2L, OrderStatus.SHIPPED)), PageRequest.of(1, 10), 11));
 
-        mockMvc.perform(get("/api/orders").param("status", "SHIPPED"))
+        mockMvc.perform(get("/api/orders").param("status", "SHIPPED").param("page", "1").param("size", "10"))
                 .andExpect(status().isOk())
+                .andExpect(header().string("X-Total-Count", "11"))
                 .andExpect(jsonPath("$[0].id").value(2))
                 .andExpect(jsonPath("$[0].status").value("SHIPPED"));
-
-        verify(orderService, never()).getAllOrders();
     }
 
     @Test

@@ -267,7 +267,7 @@ For nested fields, `field` uses paths like `items[0].quantity`.
 
 | Method | Path | Success | Description |
 |---|---|---|---|
-| GET | `/api/products` | 200 | List all products |
+| GET | `/api/products` | 200 | List products (optional `?q=&page=&size=&sort=`) |
 | GET | `/api/products/low-stock?threshold=10` | 200 | List products with `quantity <= threshold` |
 | GET | `/api/products/{id}` | 200 | Get one product |
 | POST | `/api/products` | 201 | Create a product |
@@ -276,7 +276,7 @@ For nested fields, `field` uses paths like `items[0].quantity`.
 | DELETE | `/api/products/{id}` | 204 | Delete a product and its movements |
 | GET | `/api/products/{id}/movements` | 200 | A product's stock movements, newest first |
 | GET | `/api/stock-movements` | 200 | All stock movements, newest first (optional `?productId=&reason=`) |
-| GET | `/api/orders` | 200 | List all orders (optional `?status=`) |
+| GET | `/api/orders` | 200 | List orders, newest first (optional `?status=&page=&size=`) |
 | GET | `/api/orders/{id}` | 200 | Get one order with its items |
 | POST | `/api/orders` | 201 | Create an order, optionally with items |
 | PUT | `/api/orders/{id}` | 200 | Replace all items of a `PENDING` order |
@@ -294,9 +294,20 @@ For nested fields, `field` uses paths like `items[0].quantity`.
 
 #### `GET /api/products`
 
-Returns every product.
+Returns products, optionally searched, sorted and paged. Without `page` and `size` every match is returned.
+
+| Parameter | Rules |
+|---|---|
+| `q` | Optional. Case-insensitive text that the `name`, `sku` or `description` must contain. `%` and `_` match literally. |
+| `sort` | Optional, default `id`. One of `id`, `name`, `sku`, `price`, `quantity`, `createdAt`, `updatedAt`, optionally followed by `,asc` or `,desc` (e.g. `quantity,desc`). Ties are ordered by `id`. |
+| `page` | Optional, 0-based, default `0` when `size` is given |
+| `size` | Optional, 1–500, default `50` when `page` is given |
+
+The `X-Total-Count` response header holds the number of matching products across all pages (it is exposed to
+the browser through CORS).
 
 - **200**: `Product[]`
+- **400**: unknown `sort` field or direction, negative `page`, or `size` outside 1–500
 
 ```json
 [
@@ -514,11 +525,12 @@ The desktop app uses a 120-second timeout for this call. Every other call uses 1
 
 #### `GET /api/orders`
 
-Optional query parameter `status` (`PENDING`, `SHIPPED`, `DELIVERED` or `CANCELLED`) returns only orders
-with that status.
+Returns orders newest first (highest `id` first). Optional query parameter `status` (`PENDING`, `SHIPPED`,
+`DELIVERED` or `CANCELLED`) returns only orders with that status. `page` (0-based) and `size` (1–500) work as for
+`GET /api/products`; without both, every match is returned. `X-Total-Count` holds the number of matching orders.
 
 - **200**: `Order[]` (each order includes its `orderItems`)
-- **400**: `status` isn't a valid `OrderStatus`
+- **400**: `status` isn't a valid `OrderStatus`, negative `page`, or `size` outside 1–500
 
 #### `GET /api/orders/{id}`
 

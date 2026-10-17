@@ -275,7 +275,6 @@ The [review](docs/REVIEW.md) has the full list with recommendations. The main po
 - **H2 file format.** A future Spring Boot or H2 upgrade may not open existing database files or backups without
   an export and re-import.
 - **Spring Boot 3.5.x is out of open-source support** (since June 2026); 4.x is the next step.
-- **No pagination** on the product and order lists (movement lists are paged).
 - **Tauri icons are not checked in** and must be generated before the first desktop build. The desktop app hasn't
   had a first real run yet.
 
@@ -284,7 +283,7 @@ The [review](docs/REVIEW.md) has the full list with recommendations. The main po
    reorder points and a Restock action.
 2. **v2 Run 3:** categories, unit cost, reports and CSV export.
 3. Plan the migration to Spring Boot 4.x, and the H2 2.3 upgrade (export and re-import, see O-13).
-4. Pagination on the remaining lists and OpenAPI/Swagger docs.
+4. OpenAPI/Swagger docs.
 5. Later: ship backend and desktop as one app, multi-location stock, demand forecasting.
 
 ## Contributing

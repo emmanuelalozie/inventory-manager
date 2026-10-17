@@ -12,20 +12,25 @@ import com.example.inventix.model.StockMovement;
 import com.example.inventix.repository.OrderItemRepository;
 import com.example.inventix.repository.ProductRepository;
 import com.example.inventix.repository.StockMovementRepository;
+import com.example.inventix.service.Paging;
 import com.example.inventix.service.ProductService;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.domain.Page;
 import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import java.util.Locale;
+import java.util.Set;
 
 @Service
 @Transactional
 public class ProductServiceImpl implements ProductService {
 
     static final String INITIAL_STOCK_NOTE = "Initial stock";
+
+    static final Set<String> SORT_FIELDS = Set.of("id", "name", "sku", "price", "quantity", "createdAt", "updatedAt");
 
     private final ProductRepository productRepository;
     private final OrderItemRepository orderItemRepository;
@@ -99,6 +104,12 @@ public class ProductServiceImpl implements ProductService {
     }
 
     @Override
+    public Page<Product> searchProducts(String query, Integer page, Integer size, String sort) {
+        String pattern = query == null || query.isBlank() ? null : "%" + escapeLike(query.trim().toLowerCase(Locale.ROOT)) + "%";
+        return productRepository.search(pattern, Paging.pageable(page, size, Paging.sort(sort, SORT_FIELDS, "id")));
+    }
+
+    @Override
     public List<Product> getLowStockProducts(int threshold) {
         if (threshold < 0) {
             throw new BadRequestException("threshold must be zero or greater");
@@ -156,5 +167,10 @@ public class ProductServiceImpl implements ProductService {
     // SKUs are compared and stored trimmed and upper-case, so "abc-1 " and "ABC-1" can't both exist.
     private static String normalizeSku(String sku) {
         return sku == null ? null : sku.trim().toUpperCase(Locale.ROOT);
+    }
+
+    // Makes % and _ in a search term match literally (the queries use '\' as the LIKE escape character).
+    private static String escapeLike(String text) {
+        return text.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_");
     }
 }

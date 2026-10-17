@@ -159,8 +159,16 @@ See O-13 and O-15 for the risks that come with a file database.
 
 ### O-5. No pagination or sorting
 
-**Status:** partly done.
-The new stock movement endpoints are paged (`page`, `size` 1–500, newest first). `GET /api/products` and
+**Status:** fixed. `GET /api/products` takes `q` (name, SKU or description), `sort` (whitelisted fields,
+`,asc`/`,desc`), `page` and `size`; `GET /api/orders` takes `status`, `page` and `size` and returns newest first.
+Both set `X-Total-Count` (exposed through CORS), and without `page`/`size` they still return every row, so
+existing callers are unchanged. Orders are paged by id first and then loaded with their items in one query
+(`OrderRepository.findIds` + `findByIdIn`), so Hibernate never pages a collection fetch in memory. The desktop
+Products and Orders lists now load 50 rows at a time with a "Load more" button, and product search runs on the
+backend. The dashboard and the order product pickers still load the full lists. Tests:
+`service/SearchIntegrationTest`, plus the controller and desktop `api.test.mjs` tests.
+
+**Was:** the new stock movement endpoints were paged (`page`, `size` 1–500, newest first). `GET /api/products` and
 `GET /api/orders` still return every row, and each order includes all its items (loaded in the same query
 through an `@EntityGraph`). This is fine for one user's data but won't scale.
 

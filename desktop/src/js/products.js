@@ -3,6 +3,7 @@
 import { ApiError, MOVEMENTS_PAGE_SIZE, productsApi } from "./api.js";
 import {
   NOTE_MAX_LENGTH,
+  countLabel,
   formatDelta,
   hasMorePages,
   movementReference,
@@ -30,8 +31,12 @@ import {
 const MAX_INT = 2147483647; // Java Integer.MAX_VALUE
 const MAX_PRICE = 9999999999.99; // DECIMAL(12, 2)
 
+// The rows loaded so far (one or more pages of the current search) and the number of matches on the backend.
 let products = [];
+let total = 0;
+let nextPage = 0;
 let searchTerm = "";
+let loadRequest = 0; // ignores responses to searches that were replaced by a newer one
 
 const tableEl = () => document.getElementById("products-table");
 const countEl = () => document.getElementById("products-count");
@@ -145,9 +150,9 @@ export function initProducts() {
   search.addEventListener(
     "input",
     debounce(() => {
-      searchTerm = search.value.trim().toLowerCase();
-      renderTable();
-    }, 150)
+      searchTerm = search.value.trim();
+      loadProducts();
+    }, 250)
   );
 
   document.getElementById("products-new").addEventListener("click", () => openProductDialog(null));
@@ -156,6 +161,10 @@ export function initProducts() {
   tableEl().addEventListener("click", (event) => {
     const button = event.target.closest("button[data-action]");
     if (!button) return;
+    if (button.dataset.action === "more") {
+      loadProducts({ more: true });
+      return;
+    }
     const product = products.find((p) => String(p.id) === button.dataset.id);
     if (!product) return;
     if (button.dataset.action === "edit") openProductDialog(product);
@@ -169,42 +178,50 @@ export function showProducts() {
   return loadProducts();
 }
 
-async function loadProducts() {
-  if (!products.length) renderPlaceholder(tableEl(), "loading", "Loading products…");
+/** Loads the first page of the current search, or with more, the next page after the rows already shown. */
+async function loadProducts({ more = false } = {}) {
+  const requestId = ++loadRequest;
+  const page = more ? nextPage : 0;
+  const moreButton = tableEl().querySelector('[data-action="more"]');
+  if (more && moreButton) moreButton.disabled = true;
+  if (!more && !products.length) renderPlaceholder(tableEl(), "loading", "Loading products…");
   try {
-    products = await productsApi.list();
+    const result = await productsApi.search({ q: searchTerm, page });
+    if (requestId !== loadRequest) return;
+    products = more ? [...products, ...result.items] : result.items;
+    total = result.total;
+    nextPage = page + 1;
     renderTable();
   } catch (error) {
+    if (requestId !== loadRequest) return;
+    if (more) {
+      if (moreButton) moreButton.disabled = false;
+      showError(error, "Could not load more products");
+      return;
+    }
     products = [];
+    total = 0;
     countEl().textContent = "";
     showLoadError(tableEl(), error, "Could not load products");
   }
 }
 
-function matches(product) {
-  if (!searchTerm) return true;
-  return [product.name, product.sku, product.description]
-    .filter(Boolean)
-    .some((value) => String(value).toLowerCase().includes(searchTerm));
-}
-
 function renderTable() {
   const threshold = getLowStockThreshold();
-  const visible = products.filter(matches);
   countEl().textContent = searchTerm
-    ? `${visible.length} of ${products.length} products`
-    : `${products.length} products`;
+    ? `${countLabel(products.length, total, "match", "matches")} for “${searchTerm}”`
+    : countLabel(products.length, total, "product");
 
   if (!products.length) {
-    renderPlaceholder(tableEl(), "empty", "No products yet. Click “New product” to add one.");
-    return;
-  }
-  if (!visible.length) {
-    renderPlaceholder(tableEl(), "empty", "No products match your search.");
+    renderPlaceholder(
+      tableEl(),
+      "empty",
+      searchTerm ? "No products match your search." : "No products yet. Click “New product” to add one."
+    );
     return;
   }
 
-  const rows = visible
+  const rows = products
     .map(
       (p) => `
       <tr>
@@ -237,13 +254,23 @@ function renderTable() {
         </thead>
         <tbody>${rows}</tbody>
       </table>
-    </div>`;
+    </div>
+    ${
+      products.length < total
+        ? `<div class="list-more"><button type="button" class="button" data-action="more">Load more</button></div>`
+        : ""
+    }`;
 }
 
 function replaceProduct(updated) {
   const index = products.findIndex((p) => p.id === updated.id);
-  if (index >= 0) products[index] = updated;
-  else products.push(updated);
+  if (index >= 0) {
+    products[index] = updated;
+  } else {
+    // A new product: show it at the top until the next reload puts it in sorted order.
+    products.unshift(updated);
+    total++;
+  }
   renderTable();
 }
 
@@ -484,6 +511,7 @@ async function deleteProduct(product) {
   try {
     await productsApi.remove(product.id);
     products = products.filter((p) => p.id !== product.id);
+    total = Math.max(0, total - 1);
     renderTable();
     toast(`Deleted ${product.name}`, { type: "success" });
   } catch (error) {

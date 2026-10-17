@@ -14,10 +14,12 @@ import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
-import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.context.annotation.Import;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.math.BigDecimal;
@@ -26,6 +28,7 @@ import java.util.List;
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.endsWith;
 import static org.hamcrest.Matchers.hasItems;
+import static org.hamcrest.Matchers.hasSize;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
@@ -71,11 +74,32 @@ class ProductControllerTest {
 
     @Test
     void testGetAllProducts() throws Exception {
-        when(productService.getAllProducts()).thenReturn(List.of(sampleProduct()));
+        when(productService.searchProducts(null, null, null, null)).thenReturn(new PageImpl<>(List.of(sampleProduct())));
 
         mockMvc.perform(get("/api/products"))
                 .andExpect(status().isOk())
+                .andExpect(header().string("X-Total-Count", "1"))
                 .andExpect(jsonPath("$[0].name").value("Sample Product"));
+    }
+
+    @Test
+    void getAllProducts_passesSearchPagingAndSort() throws Exception {
+        when(productService.searchProducts("mouse", 2, 20, "name,desc"))
+                .thenReturn(new PageImpl<>(List.of(sampleProduct()), PageRequest.of(2, 20), 41));
+
+        mockMvc.perform(get("/api/products")
+                        .param("q", "mouse").param("page", "2").param("size", "20").param("sort", "name,desc"))
+                .andExpect(status().isOk())
+                .andExpect(header().string("X-Total-Count", "41"))
+                .andExpect(jsonPath("$", hasSize(1)));
+    }
+
+    @Test
+    void corsExposesTotalCountHeader() throws Exception {
+        when(productService.searchProducts(null, null, null, null)).thenReturn(new PageImpl<>(List.of()));
+
+        mockMvc.perform(get("/api/products").header(HttpHeaders.ORIGIN, "http://tauri.localhost"))
+                .andExpect(header().string(HttpHeaders.ACCESS_CONTROL_EXPOSE_HEADERS, containsString("X-Total-Count")));
     }
 
     @Test
@@ -132,7 +156,8 @@ class ProductControllerTest {
 
     @Test
     void unexpectedIllegalArgument_returns400WithoutItsMessage() throws Exception {
-        when(productService.getAllProducts()).thenThrow(new IllegalArgumentException("internal detail: table PRODUCTS"));
+        when(productService.searchProducts(null, null, null, null))
+                .thenThrow(new IllegalArgumentException("internal detail: table PRODUCTS"));
 
         mockMvc.perform(get("/api/products"))
                 .andExpect(status().isBadRequest())

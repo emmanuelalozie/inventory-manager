@@ -22,6 +22,9 @@ public class WebConfig implements WebMvcConfigurer {
             "http://127.0.0.1:5500"
     };
 
+    /** Response header with the total number of matches of a list request, across all pages. */
+    public static final String TOTAL_COUNT_HEADER = "X-Total-Count";
+
     static final String[] ALLOWED_METHODS = {"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"};
 
     private final String[] allowedOrigins;
@@ -37,7 +40,7 @@ public class WebConfig implements WebMvcConfigurer {
                 .allowedOrigins(allowedOrigins)
                 .allowedMethods(ALLOWED_METHODS)
                 .allowedHeaders("*")
-                .exposedHeaders("Location")
+                .exposedHeaders("Location", TOTAL_COUNT_HEADER)
                 .maxAge(3600);
     }
 }

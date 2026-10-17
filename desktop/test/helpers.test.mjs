@@ -9,6 +9,7 @@ import {
   describeBackup,
   formatDelta,
   formatFileSize,
+  countLabel,
   hasMorePages,
   movementReference,
   productRequestBody,
@@ -123,4 +124,11 @@ test("productRequestBody never sends quantity when editing", () => {
   assert.ok(!("quantity" in updated));
 
   assert.ok(!("version" in productRequestBody(values, { editing: true, version: null })));
+});
+
+test("countLabel shows 'x of y' only while more pages exist", () => {
+  assert.equal(countLabel(3, 3, "product"), "3 products");
+  assert.equal(countLabel(1, 1, "order"), "1 order");
+  assert.equal(countLabel(50, 120, "product"), "50 of 120 products");
+  assert.equal(countLabel(0, 0, "order"), "0 orders");
 });

@@ -8,6 +8,7 @@ import {
   ApiError,
   DEFAULT_BASE_URL,
   MOVEMENTS_PAGE_SIZE,
+  LIST_PAGE_SIZE,
   backupApi,
   newIdempotencyKey,
   ordersApi,
@@ -130,4 +131,44 @@ test("ordersApi.create sends the Idempotency-Key header only when a key is given
 
 test("newIdempotencyKey returns a different key each time", () => {
   assert.notEqual(newIdempotencyKey(), newIdempotencyKey());
+});
+
+test("productsApi.search sends query, paging and sort, and reads X-Total-Count", async (t) => {
+  const urls = [];
+  const original = globalThis.fetch;
+  globalThis.fetch = async (url) => {
+    urls.push(url);
+    return {
+      status: 200,
+      ok: true,
+      statusText: "OK",
+      headers: { get: (name) => (name === "X-Total-Count" ? "120" : null) },
+      text: async () => '[{"id":1}]',
+    };
+  };
+  t.after(() => {
+    globalThis.fetch = original;
+  });
+
+  const result = await productsApi.search({ q: "mouse pad", page: 2 });
+
+  assert.equal(urls[0], `${DEFAULT_BASE_URL}/api/products?q=mouse+pad&page=2&size=${LIST_PAGE_SIZE}&sort=name`);
+  assert.deepEqual(result, { items: [{ id: 1 }], total: 120 });
+});
+
+test("ordersApi.search falls back to the row count without X-Total-Count", async (t) => {
+  const urls = [];
+  const original = globalThis.fetch;
+  globalThis.fetch = async (url) => {
+    urls.push(url);
+    return { status: 200, ok: true, statusText: "OK", text: async () => '[{"id":3},{"id":2}]' };
+  };
+  t.after(() => {
+    globalThis.fetch = original;
+  });
+
+  const result = await ordersApi.search({ status: "PENDING", size: 10 });
+
+  assert.equal(urls[0], `${DEFAULT_BASE_URL}/api/orders?status=PENDING&page=0&size=10`);
+  assert.equal(result.total, 2);
 });
