@@ -1,6 +1,7 @@
-// Dashboard: headline counts, low-stock list, orders by status and recent orders.
+// Dashboard: headline counts, reorder list with Restock, low-stock list, orders by status and recent orders.
 
-import { ORDER_STATUSES, ordersApi, productsApi } from "./api.js";
+import { ORDER_STATUSES, ordersApi, productsApi, restockApi } from "./api.js";
+import { describeRestockResults } from "./helpers.js";
 import { openStockDialog } from "./products.js";
 import { getLowStockThreshold } from "./settings.js";
 import {
@@ -9,9 +10,11 @@ import {
   formatMoney,
   formatNumber,
   renderPlaceholder,
+  showError,
   showLoadError,
   statusBadge,
   stockBadge,
+  toast,
 } from "./ui.js";
 
 const RECENT_ORDER_COUNT = 5;
@@ -22,6 +25,11 @@ const el = (id) => document.getElementById(id);
 
 export function initDashboard() {
   el("dashboard-refresh").addEventListener("click", () => loadDashboard());
+  el("dashboard-restock-all").addEventListener("click", (event) => restockAll(event.currentTarget));
+  el("dashboard-reorder").addEventListener("click", (event) => {
+    const button = event.target.closest('button[data-action="restock-one"]');
+    if (button) restockOne(button.dataset.id, button);
+  });
 
   el("dashboard-low-stock").addEventListener("click", async (event) => {
     const button = event.target.closest('button[data-action="restock"]');
@@ -53,20 +61,23 @@ async function loadDashboard() {
 
   let products;
   let orders;
+  let reorder;
   try {
-    [products, lowStock, orders] = await Promise.all([
+    [products, lowStock, orders, reorder] = await Promise.all([
       productsApi.list(),
       productsApi.lowStock(threshold),
       ordersApi.list(),
+      restockApi.reorderList(),
     ]);
   } catch (error) {
     lowStock = [];
-    containers.forEach((id) => renderPlaceholder(el(id), "error", "Unavailable"));
+    [...containers, "dashboard-reorder"].forEach((id) => renderPlaceholder(el(id), "error", "Unavailable"));
     showLoadError(el("dashboard-stats"), error, "Could not load the dashboard");
     return;
   }
 
   renderStats(products, orders);
+  renderReorder(reorder);
   renderLowStock(threshold);
   renderOrderStatus(orders);
   renderRecentOrders(orders);
@@ -99,6 +110,73 @@ function renderStats(products, orders) {
     .join("");
 }
 
+function reorderState(item) {
+  if (item.problem) return `<span class="reorder-state problem">Can't restock: ${escapeHtml(item.problem)}</span>`;
+  if (item.covered) return `<span class="reorder-state ok">${escapeHtml(formatNumber(item.onOrder))} on order or planned</span>`;
+  const how = item.source === "MAKE" ? "Made in-house" : `From ${item.supplierName}`;
+  const coming = item.onOrder ? ` · ${formatNumber(item.onOrder)} on order` : "";
+  return `<span class="reorder-state">${escapeHtml(how + coming)}</span>`;
+}
+
+function renderReorder(items) {
+  const container = el("dashboard-reorder");
+  const ready = items.filter((i) => !i.problem && !i.covered);
+  el("dashboard-restock-all").disabled = !ready.length;
+  if (!items.length) {
+    renderPlaceholder(
+      container,
+      "empty",
+      "Nothing to reorder. Products with a reorder point show up here when their stock reaches it."
+    );
+    return;
+  }
+  const rows = items
+    .map(
+      (i) => `
+      <tr>
+        <td><div class="cell-title">${escapeHtml(i.name)}</div><div class="cell-sub">${escapeHtml(i.sku)}</div></td>
+        <td class="num">${escapeHtml(formatNumber(i.quantity))} <span class="muted">/ ${escapeHtml(formatNumber(i.reorderPoint))}</span></td>
+        <td>${reorderState(i)}</td>
+        <td class="row-actions">
+          <button type="button" class="button button-small" data-action="restock-one" data-id="${escapeHtml(i.productId)}"
+            ${i.problem ? "disabled" : ""}>Restock${i.reorderQuantity ? ` ${escapeHtml(formatNumber(i.reorderQuantity))}` : ""}</button>
+        </td>
+      </tr>`
+    )
+    .join("");
+  container.innerHTML = `
+    <div class="table-wrap">
+      <table class="table table-compact">
+        <thead><tr><th>Product</th><th class="num">Stock / reorder point</th><th>Status</th><th></th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>
+    <p class="hint">Restock adds to the supplier's draft purchase order, or plans a production run. Review and order it under Purchase orders or Production.</p>`;
+}
+
+async function restockOne(productId, button) {
+  button.disabled = true;
+  try {
+    const result = await restockApi.restock(productId);
+    toast(`${result.sku}: ${result.message}`, { type: "success" });
+    loadDashboard();
+  } catch (error) {
+    button.disabled = false;
+    showError(error, "Could not restock");
+  }
+}
+
+async function restockAll(button) {
+  button.disabled = true;
+  try {
+    const { title, lines } = describeRestockResults(await restockApi.restockAll());
+    toast(title, { type: "success", details: lines, timeout: 8000 });
+  } catch (error) {
+    showError(error, "Could not restock");
+  }
+  loadDashboard();
+}
+
 function renderLowStock(threshold) {
   const container = el("dashboard-low-stock");
   if (!lowStock.length) {
@@ -112,7 +190,7 @@ function renderLowStock(threshold) {
         <td><div class="cell-title">${escapeHtml(p.name)}</div><div class="cell-sub">${escapeHtml(p.sku)}</div></td>
         <td class="num">${stockBadge(p.quantity, threshold)}</td>
         <td class="row-actions">
-          <button type="button" class="button button-small" data-action="restock" data-id="${escapeHtml(p.id)}">Restock</button>
+          <button type="button" class="button button-small" data-action="restock" data-id="${escapeHtml(p.id)}" title="Change the stock by hand">Adjust</button>
         </td>
       </tr>`
     )

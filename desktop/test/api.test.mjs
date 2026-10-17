@@ -13,6 +13,8 @@ import {
   newIdempotencyKey,
   ordersApi,
   productsApi,
+  purchaseOrdersApi,
+  restockApi,
   stockMovementsApi,
 } from "../src/js/api.js";
 
@@ -172,3 +174,33 @@ test("ordersApi.search falls back to the row count without X-Total-Count", async
   assert.equal(urls[0], `${DEFAULT_BASE_URL}/api/orders?status=PENDING&page=0&size=10`);
   assert.equal(result.total, 2);
 });
+
+test("purchaseOrdersApi.receive posts the lines and note to the receipts endpoint", async (t) => {
+  const calls = mockFetch(t, { body: { id: 4 } });
+
+  await purchaseOrdersApi.receive(4, [{ lineId: 9, quantity: 30 }], "Delivery note 881");
+
+  assert.deepEqual(calls, [
+    {
+      url: `${DEFAULT_BASE_URL}/api/purchase-orders/4/receipts`,
+      method: "POST",
+      body: { lines: [{ lineId: 9, quantity: 30 }], note: "Delivery note 881" },
+    },
+  ]);
+});
+
+test("restockApi posts to the product and reorder-list endpoints", async (t) => {
+  const calls = mockFetch(t, { body: [] });
+
+  await restockApi.restock(12);
+  await restockApi.restockAll();
+
+  assert.deepEqual(
+    calls.map((c) => [c.method, c.url]),
+    [
+      ["POST", `${DEFAULT_BASE_URL}/api/products/12/restock`],
+      ["POST", `${DEFAULT_BASE_URL}/api/reorder-list/restock`],
+    ]
+  );
+});
+

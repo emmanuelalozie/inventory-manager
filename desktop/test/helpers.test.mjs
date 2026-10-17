@@ -10,11 +10,13 @@ import {
   formatDelta,
   formatFileSize,
   countLabel,
+  describeRestockResults,
   hasMorePages,
   movementReference,
   productRequestBody,
   reasonLabel,
   sortMovementsNewestFirst,
+  statusLabel,
   validateNote,
 } from "../src/js/helpers.js";
 
@@ -50,15 +52,16 @@ test("reasonLabel covers every ledger reason and falls back to the raw value", (
   assert.equal(reasonLabel(null), "Unknown");
 });
 
-test("movementReference links orders, names purchase orders and ignores plain adjustments", () => {
+test("movementReference links orders, purchase orders and production runs, and ignores plain adjustments", () => {
   assert.deepEqual(movementReference({ orderId: 12, purchaseOrderId: null }), {
     label: "Order #12",
     href: "#/orders/12",
   });
   assert.deepEqual(movementReference({ orderId: null, purchaseOrderId: 7 }), {
     label: "Purchase order #7",
-    href: null,
+    href: "#/purchase-orders/7",
   });
+  assert.deepEqual(movementReference({ productionRunId: 3 }), { label: "Production run #3", href: "#/production" });
   assert.equal(movementReference({ orderId: null, purchaseOrderId: null }), null);
   assert.equal(movementReference({}), null);
 });
@@ -116,11 +119,12 @@ test("describeBackup copes with a partial response", () => {
 test("productRequestBody never sends quantity when editing", () => {
   const values = { name: "Keyboard", sku: "KB-002", description: "", price: 49.99, quantity: 7 };
 
+  const sourcing = { source: "BUY", supplierId: null, reorderPoint: null, reorderQuantity: null };
   const created = productRequestBody(values, { editing: false });
-  assert.deepEqual(created, { name: "Keyboard", sku: "KB-002", description: null, price: 49.99, quantity: 7 });
+  assert.deepEqual(created, { name: "Keyboard", sku: "KB-002", description: null, price: 49.99, ...sourcing, quantity: 7 });
 
   const updated = productRequestBody(values, { editing: true, version: 3 });
-  assert.deepEqual(updated, { name: "Keyboard", sku: "KB-002", description: null, price: 49.99, version: 3 });
+  assert.deepEqual(updated, { name: "Keyboard", sku: "KB-002", description: null, price: 49.99, ...sourcing, version: 3 });
   assert.ok(!("quantity" in updated));
 
   assert.ok(!("version" in productRequestBody(values, { editing: true, version: null })));
@@ -131,4 +135,33 @@ test("countLabel shows 'x of y' only while more pages exist", () => {
   assert.equal(countLabel(1, 1, "order"), "1 order");
   assert.equal(countLabel(50, 120, "product"), "50 of 120 products");
   assert.equal(countLabel(0, 0, "order"), "0 orders");
+});
+
+test("productRequestBody sends sourcing fields and drops the supplier of made products", () => {
+  const base = { name: "Table", sku: "TBL", description: "", price: 99, quantity: 0, reorderPoint: 2, reorderQuantity: 5 };
+
+  const bought = productRequestBody({ ...base, source: "BUY", supplierId: 4 });
+  assert.equal(bought.supplierId, 4);
+  assert.equal(bought.reorderPoint, 2);
+
+  const made = productRequestBody({ ...base, source: "MAKE", supplierId: 4 });
+  assert.equal(made.source, "MAKE");
+  assert.equal(made.supplierId, null);
+  assert.equal(made.reorderQuantity, 5);
+});
+
+test("statusLabel turns enum names into words", () => {
+  assert.equal(statusLabel("PARTIALLY_RECEIVED"), "Partially received");
+  assert.equal(statusLabel("DRAFT"), "Draft");
+  assert.equal(statusLabel(null), "");
+});
+
+test("describeRestockResults counts what was added and lists every product", () => {
+  const summary = describeRestockResults([
+    { sku: "BOLT", action: "PURCHASE_ORDER", added: true, message: "Added 50 to draft purchase order #4" },
+    { sku: "NUT", action: "SKIPPED", added: false, message: "no supplier set" },
+  ]);
+  assert.equal(summary.title, "Restocked 1 product");
+  assert.deepEqual(summary.lines, ["BOLT: Added 50 to draft purchase order #4", "NUT: no supplier set"]);
+  assert.equal(describeRestockResults([]).title, "Nothing new to restock");
 });

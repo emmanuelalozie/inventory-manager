@@ -13,25 +13,42 @@ import {
 import { initDashboard, showDashboard } from "./dashboard.js";
 import { describeBackup } from "./helpers.js";
 import { initOrders, showOrders } from "./orders.js";
+import { initProduction, showProduction } from "./production.js";
 import { initProducts, showProducts } from "./products.js";
+import { initPurchaseOrders, showPurchaseOrders } from "./purchase-orders.js";
 import {
   DEFAULT_LOW_STOCK_THRESHOLD,
   getLowStockThreshold,
   setLowStockThreshold,
 } from "./settings.js";
+import { initSuppliers, showSuppliers } from "./suppliers.js";
 import { clearFieldErrors, describeError, escapeHtml, setFieldError, showError, toast } from "./ui.js";
 
 const VIEWS = {
   dashboard: showDashboard,
   products: showProducts,
   orders: showOrders,
+  "purchase-orders": showPurchaseOrders,
+  production: showProduction,
+  suppliers: showSuppliers,
   settings: showSettings,
+};
+
+const VIEW_TITLES = {
+  dashboard: "Dashboard",
+  products: "Products",
+  orders: "Orders",
+  "purchase-orders": "Purchase orders",
+  production: "Production",
+  suppliers: "Suppliers",
+  settings: "Settings",
 };
 
 const el = (id) => document.getElementById(id);
 
 // ---------------------------------------------------------------------------
-// Routing (#/dashboard, #/products, #/orders, #/orders/12, #/settings)
+// Routing (#/dashboard, #/products, #/orders, #/orders/12, #/purchase-orders/3, #/production, #/suppliers,
+// #/settings)
 // ---------------------------------------------------------------------------
 
 function parseRoute() {
@@ -51,8 +68,7 @@ function route() {
     if (active) link.setAttribute("aria-current", "page");
     else link.removeAttribute("aria-current");
   });
-  const title = view.charAt(0).toUpperCase() + view.slice(1);
-  document.title = `${title} · Inventix`;
+  document.title = `${VIEW_TITLES[view]} · Inventix`;
   return VIEWS[view](param);
 }
 
@@ -191,6 +207,9 @@ function start() {
   initDashboard();
   initProducts();
   initOrders();
+  initPurchaseOrders();
+  initProduction();
+  initSuppliers();
   initSettings();
   window.addEventListener("hashchange", () => route());
   route();

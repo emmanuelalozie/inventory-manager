@@ -43,16 +43,21 @@ export function formatDelta(delta) {
 }
 
 /**
- * What a movement refers to. Returns { label, href } for an order (href opens it in the Orders view),
- * { label, href: null } for a purchase order, or null when there is no reference.
- * The order may have been deleted since; the movement keeps its id either way.
+ * What a movement refers to: { label, href } for an order, purchase order or production run (href opens it),
+ * or null when there is no reference. A pending order may have been deleted since; the movement keeps its id.
  */
 export function movementReference(movement) {
   if (movement && movement.orderId != null) {
     return { label: `Order #${movement.orderId}`, href: `#/orders/${encodeURIComponent(movement.orderId)}` };
   }
   if (movement && movement.purchaseOrderId != null) {
-    return { label: `Purchase order #${movement.purchaseOrderId}`, href: null };
+    return {
+      label: `Purchase order #${movement.purchaseOrderId}`,
+      href: `#/purchase-orders/${encodeURIComponent(movement.purchaseOrderId)}`,
+    };
+  }
+  if (movement && movement.productionRunId != null) {
+    return { label: `Production run #${movement.productionRunId}`, href: "#/production" };
   }
   return null;
 }
@@ -114,9 +119,40 @@ export function describeBackup(result) {
  * When editing, quantity is left out: the backend rejects a changed quantity on PUT,
  * because stock only changes through the stock endpoint (which records a movement).
  */
-export function productRequestBody({ name, sku, description, price, quantity }, { editing = false, version } = {}) {
-  const body = { name, sku, description: description || null, price };
+export function productRequestBody(
+  { name, sku, description, price, quantity, source = "BUY", supplierId = null, reorderPoint = null, reorderQuantity = null },
+  { editing = false, version } = {}
+) {
+  // PUT replaces the sourcing fields too, so they are always sent. Made products have no supplier.
+  const body = {
+    name,
+    sku,
+    description: description || null,
+    price,
+    source,
+    supplierId: source === "MAKE" ? null : supplierId,
+    reorderPoint,
+    reorderQuantity,
+  };
   if (!editing) body.quantity = quantity;
   if (editing && version != null) body.version = version;
   return body;
+}
+
+/** "Partially received" for PARTIALLY_RECEIVED. */
+export function statusLabel(status) {
+  const text = String(status || "").toLowerCase().replace(/_/g, " ");
+  return text.charAt(0).toUpperCase() + text.slice(1);
+}
+
+/** One line per restock result, e.g. "BOLT-1: Added 50 to draft purchase order #4". */
+export function describeRestockResults(results) {
+  const list = Array.isArray(results) ? results : [];
+  const acted = list.filter((r) => r.action !== "SKIPPED" && r.added);
+  return {
+    title: acted.length
+      ? `Restocked ${acted.length} ${acted.length === 1 ? "product" : "products"}`
+      : "Nothing new to restock",
+    lines: list.map((r) => `${r.sku}: ${r.message}`),
+  };
 }

@@ -478,7 +478,27 @@ code {
   color: var(--success);
 }
 
+.badge-draft,
+.badge-planned {
+  background: var(--surface-2);
+  color: var(--text);
+  border: 1px solid var(--border);
+}
+
+.badge-ordered,
+.badge-partially_received {
+  background: var(--primary-soft);
+  color: var(--primary);
+}
+
+.badge-received,
+.badge-completed {
+  background: var(--success-soft);
+  color: var(--success);
+}
+
 .badge-cancelled,
+.badge-closed,
 .badge-unknown {
   background: var(--surface-2);
   color: var(--muted);
@@ -1128,4 +1148,69 @@ textarea.invalid {
   display: flex;
   justify-content: center;
   padding: 0.75rem;
+}
+
+/* ---------- Purchasing and production ---------- */
+
+.field-group {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.75rem 1rem 1rem;
+  margin: 0;
+}
+
+.field-group legend {
+  padding: 0 0.35rem;
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+.po-lines {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.po-line {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 7rem 8rem auto;
+  gap: 0.5rem;
+  align-items: start;
+}
+
+.po-line .field-label {
+  font-size: 0.75rem;
+}
+
+.receive-table input {
+  width: 6rem;
+}
+
+.reorder-state {
+  font-size: 0.8rem;
+}
+
+.reorder-state.ok {
+  color: var(--success);
+}
+
+.reorder-state.problem {
+  color: var(--warning);
+}
+
+@media (max-width: 640px) {
+  .po-line {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+
+.section-title {
+  margin: 1.1rem 0 0.5rem;
+  font-size: 0.95rem;
+}
+
+.po-notes {
+  margin: 0;
+  white-space: pre-wrap;
 }

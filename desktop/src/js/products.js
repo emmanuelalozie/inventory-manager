@@ -1,6 +1,6 @@
 // Products view: list/search, create, edit, delete, stock adjustments and stock history.
 
-import { ApiError, MOVEMENTS_PAGE_SIZE, productsApi } from "./api.js";
+import { ApiError, MOVEMENTS_PAGE_SIZE, productsApi, suppliersApi } from "./api.js";
 import {
   NOTE_MAX_LENGTH,
   countLabel,
@@ -19,6 +19,7 @@ import {
   escapeHtml,
   formatDateTime,
   formatMoney,
+  formatNumber,
   openDialog,
   renderPlaceholder,
   setFieldError,
@@ -231,7 +232,10 @@ function renderTable() {
         </td>
         <td><code>${escapeHtml(p.sku)}</code></td>
         <td class="num">${formatMoney(p.price)}</td>
-        <td class="num">${stockBadge(p.quantity, threshold)}</td>
+        <td class="num">
+          ${stockBadge(p.quantity, threshold)}
+          ${p.reorderPoint != null ? `<div class="cell-sub">reorder at ${escapeHtml(formatNumber(p.reorderPoint))}</div>` : ""}
+        </td>
         <td class="hide-narrow">${escapeHtml(formatDateTime(p.updatedAt || p.createdAt))}</td>
         <td class="row-actions">
           <button type="button" class="button button-small" data-action="stock" data-id="${escapeHtml(p.id)}">Stock</button>
@@ -278,9 +282,15 @@ function replaceProduct(updated) {
 // Create / edit
 // ---------------------------------------------------------------------------
 
-function productFormBody(product) {
+function productFormBody(product, suppliers) {
   const p = product || {};
   const value = (v) => escapeHtml(v ?? "");
+  const source = p.source || "BUY";
+  const supplierOptions =
+    `<option value="">No supplier</option>` +
+    suppliers
+      .map((s) => `<option value="${escapeHtml(s.id)}" ${s.id === p.supplierId ? "selected" : ""}>${escapeHtml(s.name)}</option>`)
+      .join("");
   return `
     <div class="form-grid">
       <label class="field span-2">
@@ -318,6 +328,36 @@ function productFormBody(product) {
         <textarea name="description" maxlength="1000" rows="3">${value(p.description)}</textarea>
         <span class="field-error" data-error-for="description"></span>
       </label>
+      <fieldset class="field-group span-2">
+        <legend>Restocking</legend>
+        <div class="form-grid">
+          <label class="field">
+            <span class="field-label">Source</span>
+            <select name="source">
+              <option value="BUY" ${source === "BUY" ? "selected" : ""}>Bought from a supplier</option>
+              <option value="MAKE" ${source === "MAKE" ? "selected" : ""}>Made in-house</option>
+            </select>
+          </label>
+          <label class="field" data-supplier-field ${source === "MAKE" ? "hidden" : ""}>
+            <span class="field-label">Supplier</span>
+            <select name="supplierId">${supplierOptions}</select>
+            <span class="field-error" data-error-for="supplierId"></span>
+            ${suppliers.length ? "" : `<span class="hint">Add suppliers under Suppliers first.</span>`}
+          </label>
+          <label class="field">
+            <span class="field-label">Reorder point</span>
+            <input name="reorderPoint" type="number" min="0" step="1" value="${value(p.reorderPoint)}" placeholder="None">
+            <span class="field-error" data-error-for="reorderPoint"></span>
+            <span class="hint">Restock when stock is at or below this.</span>
+          </label>
+          <label class="field">
+            <span class="field-label">Reorder quantity</span>
+            <input name="reorderQuantity" type="number" min="1" step="1" value="${value(p.reorderQuantity)}" placeholder="None">
+            <span class="field-error" data-error-for="reorderQuantity"></span>
+            <span class="hint">How many to order or make each time.</span>
+          </label>
+        </div>
+      </fieldset>
     </div>`;
 }
 
@@ -351,6 +391,21 @@ function readProductForm(form, editing) {
   else if (!/^\d+(\.\d{1,2})?$/.test(priceText)) fail("price", "Use a number of 0 or more with at most 2 decimals");
   else if (Number(priceText) > MAX_PRICE) fail("price", "Price is too large");
 
+  // Empty means "not set"; otherwise a whole number (reorder quantity at least 1).
+  const optionalWhole = (field, min) => {
+    const text = f[field].value.trim();
+    if (f[field].validity.badInput) fail(field, "Enter a whole number");
+    else if (!text) return null;
+    else if (Number.isNaN(parseWholeNumber(text)) || Number(text) < min) fail(field, `Use a whole number of ${min} or more`);
+    else if (Number(text) > MAX_INT) fail(field, "Number is too large");
+    else return Number(text);
+    return null;
+  };
+  const reorderPoint = optionalWhole("reorderPoint", 0);
+  const reorderQuantity = optionalWhole("reorderQuantity", 1);
+  const source = f.source.value === "MAKE" ? "MAKE" : "BUY";
+  const supplierId = source === "BUY" && f.supplierId.value ? Number(f.supplierId.value) : null;
+
   if (!editing) {
     if (f.quantity.validity.badInput) fail("quantity", "Enter a whole number");
     else if (!quantityText) fail("quantity", "Quantity is required");
@@ -365,6 +420,10 @@ function readProductForm(form, editing) {
     description,
     price: Number(priceText),
     quantity: editing ? undefined : Number(quantityText),
+    source,
+    supplierId,
+    reorderPoint,
+    reorderQuantity,
   };
 }
 
@@ -372,10 +431,23 @@ async function openProductDialog(product) {
   const editing = Boolean(product);
   // Sent back on save so the backend rejects the edit if someone else changed the product meanwhile.
   let loadedVersion = editing ? product.version : null;
+  let suppliers = [];
+  try {
+    suppliers = await suppliersApi.list();
+  } catch (error) {
+    showError(error, "Could not load suppliers");
+    return;
+  }
   const saved = await openDialog({
     title: editing ? `Edit ${product.name}` : "New product",
     submitLabel: editing ? "Save changes" : "Create product",
-    body: productFormBody(product),
+    body: productFormBody(product, suppliers),
+    onOpen(form) {
+      const supplierField = form.querySelector("[data-supplier-field]");
+      form.elements.source.addEventListener("change", () => {
+        supplierField.hidden = form.elements.source.value === "MAKE";
+      });
+    },
     async onSubmit(form) {
       const values = readProductForm(form, editing);
       if (!values) return false;
