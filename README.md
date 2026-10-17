@@ -278,14 +278,13 @@ The [review](docs/REVIEW.md) has the full list with recommendations. The main po
 - **No pagination** on the product and order lists (movement lists are paged).
 - **Tauri icons are not checked in** and must be generated before the first desktop build. The desktop app hasn't
   had a first real run yet.
-- The CodeQL workflow is commented out, and there is no CI workflow that builds and tests the project.
 
 **Roadmap**
 1. **v2 Run 2:** suppliers and purchase orders (`RECEIPT`), production runs (`PRODUCTION`), buy/make source,
    reorder points and a Restock action.
 2. **v2 Run 3:** categories, unit cost, reports and CSV export.
 3. Plan the migration to Spring Boot 4.x, and the H2 2.3 upgrade (export and re-import, see O-13).
-4. Add a GitHub Actions build-and-test workflow, pagination on the remaining lists and OpenAPI/Swagger docs.
+4. Pagination on the remaining lists and OpenAPI/Swagger docs.
 5. Later: ship backend and desktop as one app, multi-location stock, demand forecasting.
 
 ## Contributing
