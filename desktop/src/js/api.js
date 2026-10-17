@@ -239,6 +239,11 @@ export const productsApi = {
   /** delta > 0 restocks, delta < 0 removes stock. The note is required and ends up in the stock ledger. */
   adjustStock: (productId, delta, note) =>
     request(`/api/products/${id(productId)}/stock`, { method: "PATCH", body: { delta, note } }),
+  /** A made product's bill of materials: [{ componentId, name, sku, quantity, inStock }]. */
+  components: (productId) => request(`/api/products/${id(productId)}/components`),
+  /** components: [{ componentId, quantity }]; replaces the whole list. */
+  setComponents: (productId, components) =>
+    request(`/api/products/${id(productId)}/components`, { method: "PUT", body: { components } }),
   /** Stock movements for one product, newest first. page is 0-based. */
   movements: (productId, { page = 0, size = MOVEMENTS_PAGE_SIZE } = {}) =>
     request(`/api/products/${id(productId)}/movements${query({ page, size })}`),
@@ -346,6 +351,9 @@ export const purchaseOrdersApi = {
   /** lines: [{ lineId, quantity }] */
   receive: (purchaseOrderId, lines, note) =>
     request(`/api/purchase-orders/${id(purchaseOrderId)}/receipts`, { method: "POST", body: { lines, note } }),
+  /** Cancels what is still to come on one line. */
+  cancelRemaining: (purchaseOrderId, lineId) =>
+    request(`/api/purchase-orders/${id(purchaseOrderId)}/lines/${id(lineId)}/cancel-remaining`, { method: "POST" }),
   remove: (purchaseOrderId) => request(`/api/purchase-orders/${id(purchaseOrderId)}`, { method: "DELETE" }),
 };
 

@@ -236,3 +236,15 @@ test("exportApi.csv returns the file instead of parsing JSON", async (t) => {
   assert.deepEqual(file, { blob: "csv-bytes", fileName: "stock-movements-2026-10-17.csv" });
 });
 
+test("purchaseOrdersApi.cancelRemaining and productsApi.setComponents hit the right endpoints", async (t) => {
+  const calls = mockFetch(t, { body: {} });
+
+  await purchaseOrdersApi.cancelRemaining(4, 9);
+  await productsApi.setComponents(6, [{ componentId: 3, quantity: 2 }]);
+
+  assert.deepEqual(calls, [
+    { url: `${DEFAULT_BASE_URL}/api/purchase-orders/4/lines/9/cancel-remaining`, method: "POST", body: undefined },
+    { url: `${DEFAULT_BASE_URL}/api/products/6/components`, method: "PUT", body: { components: [{ componentId: 3, quantity: 2 }] } },
+  ]);
+});
+

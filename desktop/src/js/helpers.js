@@ -26,6 +26,7 @@ export const MOVEMENT_REASONS = {
   CANCEL: "Returned to stock",
   RECEIPT: "Receipt",
   PRODUCTION: "Production",
+  CONSUMPTION: "Used in production",
   ADJUSTMENT: "Adjustment",
 };
 

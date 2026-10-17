@@ -23,6 +23,7 @@ import {
   openDialog,
   renderPlaceholder,
   setFieldError,
+  setFormError,
   showError,
   showLoadError,
   stockBadge,
@@ -179,6 +180,7 @@ export function initProducts() {
     if (button.dataset.action === "edit") openProductDialog(product);
     else if (button.dataset.action === "stock") adjustStock(product);
     else if (button.dataset.action === "history") openMovementsDialog(product);
+    else if (button.dataset.action === "components") openComponentsDialog(product);
     else if (button.dataset.action === "delete") deleteProduct(product);
   });
 }
@@ -264,6 +266,7 @@ function renderTable() {
         <td class="row-actions">
           <button type="button" class="button button-small" data-action="stock" data-id="${escapeHtml(p.id)}">Stock</button>
           <button type="button" class="button button-small" data-action="history" data-id="${escapeHtml(p.id)}">History</button>
+          ${p.source === "MAKE" ? `<button type="button" class="button button-small" data-action="components" data-id="${escapeHtml(p.id)}">Components</button>` : ""}
           <button type="button" class="button button-small" data-action="edit" data-id="${escapeHtml(p.id)}">Edit</button>
           <button type="button" class="button button-small button-danger-ghost" data-action="delete" data-id="${escapeHtml(p.id)}">Delete</button>
         </td>
@@ -759,5 +762,80 @@ async function openCategoriesDialog() {
     },
   });
   loadProducts(); // names or counts may have changed
+}
+
+// ---------------------------------------------------------------------------
+// Bill of materials
+// ---------------------------------------------------------------------------
+
+function componentRow(choices, line = {}) {
+  const options =
+    `<option value="">Select a component…</option>` +
+    choices
+      .map((c) => `<option value="${escapeHtml(c.id)}" ${c.id === line.componentId ? "selected" : ""}>${escapeHtml(`${c.name} (${c.sku}) · ${c.quantity} in stock`)}</option>`)
+      .join("");
+  return `
+    <div class="po-line bom-line" data-line>
+      <label class="field">
+        <span class="field-label">Component</span>
+        <select name="componentId">${options}</select>
+      </label>
+      <label class="field">
+        <span class="field-label">Per unit</span>
+        <input name="quantity" type="number" min="1" step="1" value="${escapeHtml(line.quantity ?? 1)}">
+      </label>
+      <button type="button" class="button button-small button-danger-ghost" data-action="remove-line">Remove</button>
+    </div>`;
+}
+
+/** Edits what one unit of a made product uses. Completing a production run takes these out of stock. */
+async function openComponentsDialog(product) {
+  let current;
+  let all;
+  try {
+    [current, all] = await Promise.all([productsApi.components(product.id), productsApi.list()]);
+  } catch (error) {
+    showError(error, "Could not load the components");
+    return;
+  }
+  const choices = all.filter((p) => p.id !== product.id).sort((a, b) => String(a.name).localeCompare(String(b.name)));
+  const saved = await openDialog({
+    title: `Components of ${product.name}`,
+    submitLabel: "Save components",
+    wide: true,
+    body: `
+      <p class="muted">What one ${escapeHtml(product.name)} uses. Completing a production run takes these out of stock.</p>
+      <div class="po-lines" data-lines>${(current.length ? current : []).map((c) => componentRow(choices, c)).join("")}</div>
+      <button type="button" class="button button-small" data-action="add-line">Add component</button>`,
+    onOpen(form) {
+      const container = form.querySelector("[data-lines]");
+      form.addEventListener("click", (event) => {
+        if (event.target.closest('[data-action="add-line"]')) container.insertAdjacentHTML("beforeend", componentRow(choices));
+        else if (event.target.closest('[data-action="remove-line"]')) event.target.closest("[data-line]").remove();
+      });
+    },
+    async onSubmit(form) {
+      const components = [];
+      const problems = [];
+      const seen = new Set();
+      form.querySelectorAll("[data-line]").forEach((row, index) => {
+        const componentId = row.querySelector('[name="componentId"]').value;
+        const quantity = parseWholeNumber(row.querySelector('[name="quantity"]').value);
+        if (!componentId) return problems.push(`Line ${index + 1}: choose a component`);
+        if (seen.has(componentId)) return problems.push(`Line ${index + 1}: this component is already listed`);
+        seen.add(componentId);
+        if (Number.isNaN(quantity) || quantity < 1) return problems.push(`Line ${index + 1}: use a whole number of 1 or more`);
+        components.push({ componentId: Number(componentId), quantity });
+      });
+      if (problems.length) {
+        setFormError(form, "Please fix the components below.", problems);
+        return false;
+      }
+      return productsApi.setComponents(product.id, components);
+    },
+  });
+  if (saved) {
+    toast(`Saved ${saved.length} ${saved.length === 1 ? "component" : "components"} for ${product.name}`, { type: "success" });
+  }
 }
 

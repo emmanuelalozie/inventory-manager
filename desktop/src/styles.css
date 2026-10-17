@@ -1223,3 +1223,67 @@ textarea.invalid {
   min-width: 9rem;
 }
 
+
+.bom-line {
+  grid-template-columns: minmax(0, 1fr) 7rem auto;
+}
+
+.row-short td {
+  color: var(--danger);
+}
+
+.link-button {
+  background: none;
+  border: 0;
+  padding: 0;
+  color: var(--primary);
+  font: inherit;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+.link-button:hover {
+  text-decoration: underline;
+}
+
+#print-area {
+  display: none;
+}
+
+@media print {
+  html,
+  body {
+    background: #fff !important;
+  }
+
+  .app,
+  .toasts,
+  dialog {
+    display: none !important;
+  }
+
+  #print-area {
+    display: block;
+    color: #000;
+    background: #fff;
+    font-family: var(--font);
+  }
+
+  #print-area table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 1rem;
+  }
+
+  #print-area th,
+  #print-area td {
+    border-bottom: 1px solid #999;
+    padding: 0.35rem 0.5rem;
+    text-align: left;
+  }
+
+  #print-area .num {
+    text-align: right;
+  }
+}
+

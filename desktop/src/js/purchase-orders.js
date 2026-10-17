@@ -227,8 +227,10 @@ function renderDetail() {
     o.status === "DRAFT" || o.status === "CANCELLED"
       ? `<button type="button" class="button button-danger-ghost" data-action="delete">Delete</button>`
       : "",
+    (o.lines || []).length ? `<button type="button" class="button" data-action="print">Print</button>` : "",
   ].join("");
 
+  const anyCancelled = (o.lines || []).some((l) => l.quantityCancelled > 0);
   const rows = (o.lines || [])
     .map(
       (l) => `
@@ -236,7 +238,13 @@ function renderDetail() {
         <td><div class="cell-title">${escapeHtml(l.productName)}</div><div class="cell-sub">${escapeHtml(l.productSku)}</div></td>
         <td class="num">${escapeHtml(formatNumber(l.quantityOrdered))}</td>
         <td class="num">${escapeHtml(formatNumber(l.quantityReceived))}</td>
-        <td class="num">${l.quantityRemaining > 0 ? `<strong>${escapeHtml(formatNumber(l.quantityRemaining))}</strong>` : "0"}</td>
+        ${anyCancelled ? `<td class="num">${l.quantityCancelled ? escapeHtml(formatNumber(l.quantityCancelled)) : "0"}</td>` : ""}
+        <td class="num">
+          ${l.quantityRemaining > 0 ? `<strong>${escapeHtml(formatNumber(l.quantityRemaining))}</strong>` : "0"}
+          ${canReceive && l.quantityRemaining > 0
+            ? `<div><button type="button" class="link-button" data-action="cancel-line" data-line-id="${escapeHtml(l.id)}">Cancel rest</button></div>`
+            : ""}
+        </td>
         <td class="num">${l.unitCost == null ? `<span class="muted">—</span>` : formatMoney(l.unitCost)}</td>
         <td class="num">${l.lineTotal == null ? `<span class="muted">—</span>` : formatMoney(l.lineTotal)}</td>
       </tr>`
@@ -245,9 +253,9 @@ function renderDetail() {
   const linesTable = o.lines && o.lines.length
     ? `<div class="table-wrap">
          <table class="table">
-           <thead><tr><th>Product</th><th class="num">Ordered</th><th class="num">Received</th><th class="num">Still to come</th><th class="num">Unit cost</th><th class="num">Line total</th></tr></thead>
+           <thead><tr><th>Product</th><th class="num">Ordered</th><th class="num">Received</th>${anyCancelled ? `<th class="num">Cancelled</th>` : ""}<th class="num">Still to come</th><th class="num">Unit cost</th><th class="num">Line total</th></tr></thead>
            <tbody>${rows}</tbody>
-           <tfoot><tr><td colspan="5" class="num">Total cost</td><td class="num total">${costCell(o)}</td></tr></tfoot>
+           <tfoot><tr><td colspan="${anyCancelled ? 6 : 5}" class="num">Total cost</td><td class="num total">${costCell(o)}</td></tr></tfoot>
          </table>
        </div>`
     : `<div class="placeholder placeholder-empty">No lines yet. Click Edit to add products.</div>`;
@@ -306,6 +314,25 @@ async function onDetailClick(event) {
       button.disabled = false;
       showError(error, `Could not update purchase order #${o.id}`);
     }
+  } else if (action === "cancel-line") {
+    const line = o.lines.find((l) => String(l.id) === button.dataset.lineId);
+    if (!line) return;
+    const ok = await confirmDialog({
+      title: "Cancel the rest of this line",
+      message: `Stop expecting the ${line.quantityRemaining} ${line.productName} still to come on purchase order #${o.id}? What already arrived stays in stock.`,
+      confirmLabel: "Cancel rest",
+      danger: true,
+    });
+    if (!ok) return;
+    try {
+      current = await purchaseOrdersApi.cancelRemaining(o.id, line.id);
+      toast(`Cancelled the rest of ${line.productName}`, { type: "success" });
+      renderDetail();
+    } catch (error) {
+      showError(error, "Could not cancel the line");
+    }
+  } else if (action === "print") {
+    printPurchaseOrder(o);
   } else if (action === "delete") {
     const ok = await confirmDialog({
       title: "Delete purchase order",
@@ -528,3 +555,50 @@ function openReceiveDialog(order) {
     },
   });
 }
+
+// ---------------------------------------------------------------------------
+// Print
+// ---------------------------------------------------------------------------
+
+/** Prints a clean copy of the purchase order for the supplier (what is still to come, and what was ordered). */
+async function printPurchaseOrder(order) {
+  let supplier = null;
+  try {
+    supplier = await suppliersApi.get(order.supplierId);
+  } catch {
+    // Print with the name only.
+  }
+  const anyCost = order.lines.some((l) => l.unitCost != null);
+  const rows = order.lines
+    .filter((l) => l.quantityOrdered - l.quantityCancelled > 0)
+    .map(
+      (l) => `
+      <tr>
+        <td>${escapeHtml(l.productSku)}</td>
+        <td>${escapeHtml(l.productName)}</td>
+        <td class="num">${escapeHtml(formatNumber(l.quantityOrdered - l.quantityCancelled))}</td>
+        ${anyCost ? `<td class="num">${l.unitCost == null ? "" : formatMoney(l.unitCost)}</td><td class="num">${l.lineTotal == null ? "" : formatMoney(l.lineTotal)}</td>` : ""}
+      </tr>`
+    )
+    .join("");
+  const area = document.getElementById("print-area");
+  area.innerHTML = `
+    <h1>Purchase order #${escapeHtml(order.id)}</h1>
+    <p>Date: ${escapeHtml(formatDateTime(order.orderedAt || order.createdAt))}</p>
+    <h2>Supplier</h2>
+    <p>${escapeHtml(order.supplierName)}${supplier && supplier.email ? `<br>${escapeHtml(supplier.email)}` : ""}${
+      supplier && supplier.phone ? `<br>${escapeHtml(supplier.phone)}` : ""
+    }</p>
+    <table>
+      <thead><tr><th>SKU</th><th>Product</th><th class="num">Quantity</th>${anyCost ? `<th class="num">Unit cost</th><th class="num">Total</th>` : ""}</tr></thead>
+      <tbody>${rows}</tbody>
+      ${
+        anyCost
+          ? `<tfoot><tr><td colspan="4" class="num">${order.lines.every((l) => l.unitCost != null) ? "Total" : "Total of priced lines"}</td><td class="num">${formatMoney(order.totalCost)}</td></tr></tfoot>`
+          : ""
+      }
+    </table>
+    ${order.notes ? `<h2>Notes</h2><p class="po-notes">${escapeHtml(order.notes)}</p>` : ""}`;
+  window.print();
+}
+
