@@ -18,7 +18,7 @@ This is the contract between the Inventix backend and the desktop UI.
 
 ## CORS
 
-Unchanged since v1. Requests to `/api/**` are allowed from these origins:
+By default, requests to `/api/**` are allowed from these origins:
 
 | Origin | Used by |
 |---|---|
@@ -30,7 +30,10 @@ Unchanged since v1. Requests to `/api/**` are allowed from these origins:
 
 Allowed methods: `GET, POST, PUT, PATCH, DELETE, OPTIONS`. Allowed headers: any. Exposed headers: `Location`.
 Preflight responses are cached for 3600 seconds. A request from any other origin is rejected by the browser
-(it shows up in JS as `TypeError: Failed to fetch`). The list lives in `config/WebConfig.java`.
+(it shows up in JS as `TypeError: Failed to fetch`). The defaults live in `config/WebConfig.java`. To use a
+different list without changing code, set `inventix.cors.allowed-origins` (comma-separated) in
+`application.properties` or the `INVENTIX_CORS_ALLOWED_ORIGINS` environment variable. It replaces the defaults, so
+include the Tauri origins if the desktop app should keep working.
 
 If the Tauri app sets `app.security.csp`, its `connect-src` must include `http://localhost:8080`.
 

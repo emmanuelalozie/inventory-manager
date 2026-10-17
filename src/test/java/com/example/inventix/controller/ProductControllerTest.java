@@ -1,7 +1,7 @@
 package com.example.inventix.controller;
 
-import com.example.inventix.exception.BadRequestException;
 import com.example.inventix.config.WebConfig;
+import com.example.inventix.exception.BadRequestException;
 import com.example.inventix.exception.DuplicateSkuException;
 import com.example.inventix.exception.InsufficientStockException;
 import com.example.inventix.exception.ProductInUseException;

@@ -189,8 +189,9 @@ moving to another one. Plain `npm run dev` now works, and the unverified `--no-d
 longer needed. The CORS list is unchanged, so unknown origins are still rejected. `desktop/scripts/dev-server.test.js`
 (`npm test` in `desktop/`) checks the server and that its origin matches `devUrl` and `WebConfig.java`.
 
-**Still open:** moving the allowed origins into `application.properties` so they can be changed without a code
-change.
+**Also fixed:** the allowed origins can be replaced without a code change through `inventix.cors.allowed-origins`
+(or `INVENTIX_CORS_ALLOWED_ORIGINS`); the list in `WebConfig.java` is the default. Covered by
+`config/WebConfigOriginsPropertyTest`.
 
 ### O-8. No protection against concurrent stock updates
 
