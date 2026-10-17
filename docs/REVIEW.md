@@ -126,8 +126,12 @@ users with BCrypt hashes, H2 console off) **before** changing `server.address`.
 
 ### O-3. Spring Boot 3.3.x is out of open-source support
 
-**Status:** open.
-`build.gradle` uses Spring Boot **3.3.5**. Open-source support for 3.3.x ended on **30 June 2025** (last release
+**Status:** partly fixed. `build.gradle` now uses Spring Boot **3.5.16** with `io.spring.dependency-management`
+1.1.7. H2 is pinned to 2.2.224 (`ext['h2.version']`) so existing database files and backups still open (see O-13).
+The tests' `@MockBean` (deprecated in 3.4) was replaced with `@MockitoBean`. 3.5.x is itself out of OSS support,
+so the move to 4.x below is still open.
+
+**Was:** `build.gradle` used Spring Boot **3.3.5**. Open-source support for 3.3.x ended on **30 June 2025** (last release
 3.3.13), so it no longer gets security fixes. 3.4.x ended 31 December 2025 and 3.5.x ended 30 June 2026. The
 supported lines are now 4.0.x and 4.1.x.
 
@@ -258,7 +262,8 @@ version) to serve `/swagger-ui.html` and `/v3/api-docs`, and keep `docs/API.md` 
 ### O-13. H2 file format changes on upgrade
 
 **Status:** open (risk).
-The database file is written by H2 2.2.224 (managed by Spring Boot 3.3.x). H2 has changed its file format between
+The database file is written by H2 2.2.224. Spring Boot 3.5 would bring H2 2.3.232, so `build.gradle` pins
+2.2.224 until the export/import below is done; then remove the `ext['h2.version']` line. H2 has changed its file format between
 versions before (2.1 → 2.2 files could not be opened by the other version), and the only supported upgrade path
 was a SQL export and re-import. A Spring Boot upgrade (O-3) can bump H2 the same way, and an old `.zip` backup
 has the same problem.

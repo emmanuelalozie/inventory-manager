@@ -52,7 +52,7 @@ for one user on one machine: the API only accepts local connections and has no l
 | Area | Technology |
 |---|---|
 | Language | Java 17 |
-| Framework | Spring Boot 3.3.5 (Web, Data JPA, Validation) |
+| Framework | Spring Boot 3.5.16 (Web, Data JPA, Validation); H2 pinned to 2.2.224 |
 | Database | H2 file database (`./data/inventix`), schema managed by Flyway; in-memory H2 for tests |
 | Build | Gradle 8.10.2 via the included wrapper |
 | Utilities | Lombok |
@@ -274,7 +274,7 @@ The [review](docs/REVIEW.md) has the full list with recommendations. The main po
 - **The database path depends on the start folder.** Starting the backend somewhere else creates a new database.
 - **H2 file format.** A future Spring Boot or H2 upgrade may not open existing database files or backups without
   an export and re-import.
-- **Spring Boot 3.3.x is out of open-source support** (since June 2025).
+- **Spring Boot 3.5.x is out of open-source support** (since June 2026); 4.x is the next step.
 - **No pagination** on the product and order lists (movement lists are paged).
 - **Tauri icons are not checked in** and must be generated before the first desktop build. The desktop app hasn't
   had a first real run yet.
@@ -284,7 +284,7 @@ The [review](docs/REVIEW.md) has the full list with recommendations. The main po
 1. **v2 Run 2:** suppliers and purchase orders (`RECEIPT`), production runs (`PRODUCTION`), buy/make source,
    reorder points and a Restock action.
 2. **v2 Run 3:** categories, unit cost, reports and CSV export.
-3. Upgrade to Spring Boot 3.5.x (low risk, mind the H2 file format), then plan a separate migration to 4.x.
+3. Plan the migration to Spring Boot 4.x, and the H2 2.3 upgrade (export and re-import, see O-13).
 4. Add a GitHub Actions build-and-test workflow, pagination on the remaining lists and OpenAPI/Swagger docs.
 5. Later: ship backend and desktop as one app, multi-location stock, demand forecasting.
 
