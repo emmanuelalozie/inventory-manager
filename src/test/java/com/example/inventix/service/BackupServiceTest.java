@@ -141,5 +141,38 @@ class BackupServiceTest {
 
         assertThatThrownBy(() -> service.requestRestore("x.zip")).isInstanceOf(BackupNotAvailableException.class);
     }
-}
 
+    @Test
+    void createAutomaticBackup_usesItsOwnPrefix_andIsTheLatest() {
+        BackupService service = new BackupServiceImpl(fileDb, workDir.resolve("backups").toString(), "");
+        assertThat(service.latestAutomaticBackup()).isEmpty();
+
+        BackupResponse auto = service.createAutomaticBackup();
+
+        assertThat(auto.fileName()).matches("inventix-auto-\\d{8}-\\d{6}\\.zip");
+        assertThat(service.latestAutomaticBackup()).isPresent();
+    }
+
+    @Test
+    void pruneAutomaticBackups_keepsTheNewest_andNeverTouchesManualBackups() throws IOException {
+        Path backupDir = workDir.resolve("backups");
+        Files.createDirectories(backupDir);
+        for (String name : List.of("inventix-auto-20261001-090000.zip", "inventix-auto-20261002-090000.zip",
+                "inventix-auto-20261003-090000.zip", "inventix-auto-20261003-090000-1.zip",
+                "inventix-backup-20260901-090000.zip", "notes.zip")) {
+            Files.writeString(backupDir.resolve(name), "x");
+        }
+        BackupService service = new BackupServiceImpl(fileDb, backupDir.toString(), "");
+
+        int deleted = service.pruneAutomaticBackups(2);
+
+        assertThat(deleted).isEqualTo(2);
+        try (Stream<Path> files = Files.list(backupDir)) {
+            assertThat(files.map(p -> p.getFileName().toString())).containsExactlyInAnyOrder(
+                    "inventix-auto-20261003-090000.zip", "inventix-auto-20261003-090000-1.zip",
+                    "inventix-backup-20260901-090000.zip", "notes.zip");
+        }
+        assertThat(service.pruneAutomaticBackups(0)).as("at least one is always kept").isEqualTo(1);
+        assertThat(backupDir.resolve("inventix-auto-20261003-090000-1.zip")).exists();
+    }
+}
