@@ -1287,3 +1287,21 @@ textarea.invalid {
   }
 }
 
+
+/* The customer line on an order's details */
+.order-customer {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0.25rem 0 0.15rem;
+}
+
+/* A field on its own above another block in a dialog */
+.field-spaced {
+  margin-bottom: 0.9rem;
+}
+
+/* Customer names with an email can be long; keep the filter from crowding the header */
+#orders-customer-filter {
+  max-width: 220px;
+}

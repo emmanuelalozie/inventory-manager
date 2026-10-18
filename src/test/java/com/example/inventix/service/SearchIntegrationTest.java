@@ -6,6 +6,7 @@ import com.example.inventix.model.OrderItem;
 import com.example.inventix.model.OrderStatus;
 import com.example.inventix.model.Product;
 import com.example.inventix.service.impl.OrderItemServiceImpl;
+import com.example.inventix.service.impl.CustomerServiceImpl;
 import com.example.inventix.service.impl.OrderServiceImpl;
 import com.example.inventix.service.impl.ProductServiceImpl;
 import org.junit.jupiter.api.BeforeEach;
@@ -26,7 +27,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  * Product search and the paged product and order lists, against H2.
  */
 @DataJpaTest
-@Import({ProductServiceImpl.class, OrderItemServiceImpl.class, OrderServiceImpl.class})
+@Import({ProductServiceImpl.class, OrderItemServiceImpl.class, OrderServiceImpl.class, CustomerServiceImpl.class})
 class SearchIntegrationTest {
 
     @Autowired
@@ -112,12 +113,12 @@ class SearchIntegrationTest {
         entityManager.flush();
         entityManager.clear();
 
-        Page<Order> page = orderService.searchOrders(null, 0, 2);
+        Page<Order> page = orderService.searchOrders(null, null, 0, 2);
         assertThat(page.getContent()).extracting(Order::getId).containsExactly(ids[4], ids[3]);
         assertThat(page.getTotalElements()).isEqualTo(5);
         assertThat(page.getContent().get(0).getOrderItems()).hasSize(1);
 
-        Page<Order> shipped = orderService.searchOrders(OrderStatus.SHIPPED, null, null);
+        Page<Order> shipped = orderService.searchOrders(OrderStatus.SHIPPED, null, null, null);
         assertThat(shipped.getContent()).extracting(Order::getId).containsExactly(ids[3], ids[1]);
     }
 

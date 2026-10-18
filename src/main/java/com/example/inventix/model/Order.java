@@ -45,6 +45,12 @@ public class Order {
     @ToString.Exclude
     private String idempotencyKey;
 
+    // Who the order is for; null for orders taken without a customer (and every order from before customers).
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "customer_id")
+    @ToString.Exclude
+    private Customer customer;
+
     @Column(name = "created_at", updatable = false)
     private LocalDateTime createdAt;
 

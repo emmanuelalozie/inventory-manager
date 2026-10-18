@@ -4,6 +4,7 @@ import com.example.inventix.exception.InsufficientStockException;
 import com.example.inventix.exception.InvalidOrderStateException;
 import com.example.inventix.exception.OrderItemNotFoundException;
 import com.example.inventix.exception.OrderNotFoundException;
+import com.example.inventix.model.Customer;
 import com.example.inventix.model.Order;
 import com.example.inventix.model.OrderItem;
 import com.example.inventix.model.OrderStatus;
@@ -90,7 +91,7 @@ class OrderControllerTest {
 
     @Test
     void getAllOrders_returnsOrders() throws Exception {
-        when(orderService.searchOrders(null, null, null)).thenReturn(new PageImpl<>(List.of(order(1L, OrderStatus.PENDING))));
+        when(orderService.searchOrders(null, null, null, null)).thenReturn(new PageImpl<>(List.of(order(1L, OrderStatus.PENDING))));
 
         mockMvc.perform(get("/api/orders"))
                 .andExpect(status().isOk())
@@ -101,7 +102,7 @@ class OrderControllerTest {
 
     @Test
     void getAllOrders_filtersByStatusAndPages() throws Exception {
-        when(orderService.searchOrders(OrderStatus.SHIPPED, 1, 10))
+        when(orderService.searchOrders(OrderStatus.SHIPPED, null, 1, 10))
                 .thenReturn(new PageImpl<>(List.of(order(2L, OrderStatus.SHIPPED)), PageRequest.of(1, 10), 11));
 
         mockMvc.perform(get("/api/orders").param("status", "SHIPPED").param("page", "1").param("size", "10"))
@@ -109,6 +110,46 @@ class OrderControllerTest {
                 .andExpect(header().string("X-Total-Count", "11"))
                 .andExpect(jsonPath("$[0].id").value(2))
                 .andExpect(jsonPath("$[0].status").value("SHIPPED"));
+    }
+
+    @Test
+    void getAllOrders_filtersByCustomer_andShowsTheCustomer() throws Exception {
+        Order order = order(4L, OrderStatus.PENDING);
+        Customer customer = new Customer();
+        customer.setId(7L);
+        customer.setName("Ann Lee");
+        order.setCustomer(customer);
+        when(orderService.searchOrders(null, 7L, null, null)).thenReturn(new PageImpl<>(List.of(order)));
+
+        mockMvc.perform(get("/api/orders").param("customerId", "7"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].customerId").value(7))
+                .andExpect(jsonPath("$[0].customerName").value("Ann Lee"));
+    }
+
+    @Test
+    void createOrder_passesTheCustomer() throws Exception {
+        when(orderService.createOrderWithItems(any(Order.class), any(), anyList())).thenReturn(order(5L, OrderStatus.PENDING));
+
+        mockMvc.perform(post("/api/orders")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"customerId\":7,\"items\":[]}"))
+                .andExpect(status().isCreated());
+
+        verify(orderService).createOrderWithItems(any(Order.class), eq(7L), anyList());
+    }
+
+    @Test
+    void patchCustomer_setsOrClearsIt() throws Exception {
+        when(orderService.setOrderCustomer(1L, null)).thenReturn(order(1L, OrderStatus.SHIPPED));
+
+        mockMvc.perform(patch("/api/orders/{id}/customer", 1L)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"customerId\":null}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("SHIPPED"));
+
+        verify(orderService).setOrderCustomer(1L, null);
     }
 
     @Test
@@ -154,7 +195,7 @@ class OrderControllerTest {
     @Test
     void createOrder_returns201WithLocation() throws Exception {
         Order created = order(1L, OrderStatus.PENDING, item(10L, product(1L, "50.00", 8), 2));
-        when(orderService.createOrderWithItems(any(Order.class), anyList())).thenReturn(created);
+        when(orderService.createOrderWithItems(any(Order.class), any(), anyList())).thenReturn(created);
 
         mockMvc.perform(post("/api/orders")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -166,14 +207,14 @@ class OrderControllerTest {
                 .andExpect(jsonPath("$.totalAmount").value(100.0))
                 .andExpect(jsonPath("$.orderItems[0].orderId").value(1));
 
-        verify(orderService).createOrderWithItems(any(Order.class), argThat(items -> items.size() == 1
+        verify(orderService).createOrderWithItems(any(Order.class), any(), argThat(items -> items.size() == 1
                 && items.get(0).getProduct().getId() == 1L
                 && items.get(0).getQuantity() == 2));
     }
 
     @Test
     void createOrder_withIdempotencyKey_storesTheKeyOnTheNewOrder() throws Exception {
-        when(orderService.createOrderWithItems(any(Order.class), anyList())).thenReturn(order(1L, OrderStatus.PENDING));
+        when(orderService.createOrderWithItems(any(Order.class), any(), anyList())).thenReturn(order(1L, OrderStatus.PENDING));
 
         mockMvc.perform(post("/api/orders")
                         .header("Idempotency-Key", " abc-123 ")
@@ -181,7 +222,7 @@ class OrderControllerTest {
                         .content("{\"items\":[]}"))
                 .andExpect(status().isCreated());
 
-        verify(orderService).createOrderWithItems(argThat(o -> "abc-123".equals(o.getIdempotencyKey())), anyList());
+        verify(orderService).createOrderWithItems(argThat(o -> "abc-123".equals(o.getIdempotencyKey())), any(), anyList());
     }
 
     @Test
@@ -197,7 +238,7 @@ class OrderControllerTest {
                 .andExpect(jsonPath("$.id").value(7))
                 .andExpect(jsonPath("$.idempotencyKey").doesNotExist());
 
-        verify(orderService, never()).createOrderWithItems(any(Order.class), anyList());
+        verify(orderService, never()).createOrderWithItems(any(Order.class), any(), anyList());
     }
 
     @Test
@@ -209,12 +250,12 @@ class OrderControllerTest {
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.message").value(containsString("Idempotency-Key")));
 
-        verify(orderService, never()).createOrderWithItems(any(Order.class), anyList());
+        verify(orderService, never()).createOrderWithItems(any(Order.class), any(), anyList());
     }
 
     @Test
     void createOrder_withoutItems_createsEmptyOrder() throws Exception {
-        when(orderService.createOrderWithItems(any(Order.class), anyList())).thenReturn(order(3L, OrderStatus.PENDING));
+        when(orderService.createOrderWithItems(any(Order.class), any(), anyList())).thenReturn(order(3L, OrderStatus.PENDING));
 
         mockMvc.perform(post("/api/orders")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -223,7 +264,7 @@ class OrderControllerTest {
                 .andExpect(jsonPath("$.totalAmount").value(0))
                 .andExpect(jsonPath("$.orderItems", hasSize(0)));
 
-        verify(orderService).createOrderWithItems(any(Order.class), argThat(List::isEmpty));
+        verify(orderService).createOrderWithItems(any(Order.class), any(), argThat(List::isEmpty));
     }
 
     @Test
@@ -235,7 +276,7 @@ class OrderControllerTest {
                 .andExpect(jsonPath("$.message").value("Validation failed"))
                 .andExpect(jsonPath("$.fieldErrors[0].field").value("items[0].quantity"));
 
-        verify(orderService, never()).createOrderWithItems(any(), anyList());
+        verify(orderService, never()).createOrderWithItems(any(), any(), anyList());
     }
 
     @Test
@@ -246,12 +287,12 @@ class OrderControllerTest {
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.fieldErrors[0].field").value("items[0].productId"));
 
-        verify(orderService, never()).createOrderWithItems(any(), anyList());
+        verify(orderService, never()).createOrderWithItems(any(), any(), anyList());
     }
 
     @Test
     void createOrder_returns409_whenStockIsInsufficient() throws Exception {
-        when(orderService.createOrderWithItems(any(Order.class), anyList()))
+        when(orderService.createOrderWithItems(any(Order.class), any(), anyList()))
                 .thenThrow(new InsufficientStockException("Not enough stock for product 'Widget 1'"));
 
         mockMvc.perform(post("/api/orders")

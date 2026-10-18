@@ -22,6 +22,7 @@ import {
   getLowStockThreshold,
   setLowStockThreshold,
 } from "./settings.js";
+import { initCustomers, showCustomers } from "./customers.js";
 import { initSuppliers, showSuppliers } from "./suppliers.js";
 import {
   clearFieldErrors,
@@ -39,6 +40,7 @@ const VIEWS = {
   dashboard: showDashboard,
   products: showProducts,
   orders: showOrders,
+  customers: showCustomers,
   "purchase-orders": showPurchaseOrders,
   production: showProduction,
   suppliers: showSuppliers,
@@ -50,6 +52,7 @@ const VIEW_TITLES = {
   dashboard: "Dashboard",
   products: "Products",
   orders: "Orders",
+  customers: "Customers",
   "purchase-orders": "Purchase orders",
   production: "Production",
   suppliers: "Suppliers",
@@ -60,7 +63,7 @@ const VIEW_TITLES = {
 const el = (id) => document.getElementById(id);
 
 // ---------------------------------------------------------------------------
-// Routing (#/dashboard, #/products, #/orders, #/orders/12, #/purchase-orders/3, #/production, #/suppliers,
+// Routing (#/dashboard, #/products, #/orders, #/orders/12, #/customers, #/purchase-orders/3, #/production, #/suppliers,
 // #/settings)
 // ---------------------------------------------------------------------------
 
@@ -295,6 +298,7 @@ function start() {
   initDashboard();
   initProducts();
   initOrders();
+  initCustomers();
   initPurchaseOrders();
   initProduction();
   initSuppliers();

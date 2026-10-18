@@ -280,22 +280,26 @@ export const ordersApi = {
   /** Every order, unpaged, optionally filtered by status. */
   list: (status) =>
     request(status ? `/api/orders?status=${encodeURIComponent(status)}` : "/api/orders"),
-  /** One page of orders, newest first, optionally filtered by status. Resolves with { items, total }. */
-  search: ({ status, page = 0, size = LIST_PAGE_SIZE } = {}) =>
-    request(`/api/orders${query({ status, page, size })}`, { withTotal: true }),
+  /** One page of orders, newest first, optionally filtered by status and customer. Resolves with { items, total }. */
+  search: ({ status, customerId, page = 0, size = LIST_PAGE_SIZE } = {}) =>
+    request(`/api/orders${query({ status, customerId, page, size })}`, { withTotal: true }),
   get: (orderId) => request(`/api/orders/${id(orderId)}`),
   /**
    * items: [{ productId, quantity }]. Pass the same idempotencyKey when retrying a create that may have
    * reached the backend (e.g. after a timeout), so it returns the first order instead of making a second one.
+   * customerId is optional.
    */
-  create: (items = [], idempotencyKey) =>
+  create: (items = [], idempotencyKey, customerId) =>
     request("/api/orders", {
       method: "POST",
-      body: { items },
+      body: customerId ? { customerId, items } : { items },
       headers: idempotencyKey ? { "Idempotency-Key": idempotencyKey } : undefined,
     }),
   replaceItems: (orderId, items) =>
     request(`/api/orders/${id(orderId)}`, { method: "PUT", body: { items } }),
+  /** Sets the order's customer, or clears it with null. Works in any status. */
+  setCustomer: (orderId, customerId) =>
+    request(`/api/orders/${id(orderId)}/customer`, { method: "PATCH", body: { customerId: customerId ?? null } }),
   setStatus: (orderId, status) =>
     request(`/api/orders/${id(orderId)}/status`, { method: "PATCH", body: { status } }),
   remove: (orderId) => request(`/api/orders/${id(orderId)}`, { method: "DELETE" }),
@@ -318,6 +322,16 @@ export const ordersApi = {
 // ---------------------------------------------------------------------------
 // Purchasing and production (v2 Run 2)
 // ---------------------------------------------------------------------------
+
+export const customersApi = {
+  /** Customers by name; q filters by name, email or phone. */
+  list: (q) => request(`/api/customers${query({ q })}`),
+  get: (customerId) => request(`/api/customers/${id(customerId)}`),
+  /** customer: { name, email, phone, address, notes } plus `version` on update */
+  create: (customer) => request("/api/customers", { method: "POST", body: customer }),
+  update: (customerId, customer) => request(`/api/customers/${id(customerId)}`, { method: "PUT", body: customer }),
+  remove: (customerId) => request(`/api/customers/${id(customerId)}`, { method: "DELETE" }),
+};
 
 export const suppliersApi = {
   /** All suppliers, by name. */
