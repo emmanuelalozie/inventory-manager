@@ -248,3 +248,20 @@ test("purchaseOrdersApi.cancelRemaining and productsApi.setComponents hit the ri
   ]);
 });
 
+
+test("ordersApi posts returns and reads what can still be returned", async (t) => {
+  const calls = mockFetch(t, { body: { orderId: 4, lines: [] } });
+
+  await ordersApi.returnItems(4, [{ productId: 1, quantity: 2 }], "Wrong size");
+  await ordersApi.returnItems(4, [{ productId: 1, quantity: 1 }]);
+  await ordersApi.getReturns(4);
+
+  assert.deepEqual(calls[0], {
+    url: `${DEFAULT_BASE_URL}/api/orders/4/returns`,
+    method: "POST",
+    body: { lines: [{ productId: 1, quantity: 2 }], note: "Wrong size" },
+  });
+  assert.deepEqual(calls[1].body, { lines: [{ productId: 1, quantity: 1 }], note: null });
+  assert.equal(calls[2].url, `${DEFAULT_BASE_URL}/api/orders/4/returns`);
+  assert.equal(calls[2].method, "GET");
+});

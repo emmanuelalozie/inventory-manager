@@ -1287,3 +1287,9 @@ textarea.invalid {
   }
 }
 
+
+/* Quantity boxes in the Return items dialog */
+.return-input {
+  width: 6rem;
+  text-align: right;
+}

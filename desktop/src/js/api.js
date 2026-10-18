@@ -296,6 +296,11 @@ export const ordersApi = {
     }),
   replaceItems: (orderId, items) =>
     request(`/api/orders/${id(orderId)}`, { method: "PUT", body: { items } }),
+  /** Per product on the order: { productId, productSku, productName, quantitySold, quantityReturned, quantityReturnable }. */
+  getReturns: (orderId) => request(`/api/orders/${id(orderId)}/returns`),
+  /** lines: [{ productId, quantity }]; shipped or delivered orders only. Resolves with the updated returns. */
+  returnItems: (orderId, lines, note) =>
+    request(`/api/orders/${id(orderId)}/returns`, { method: "POST", body: { lines, note: note || null } }),
   setStatus: (orderId, status) =>
     request(`/api/orders/${id(orderId)}/status`, { method: "PATCH", body: { status } }),
   remove: (orderId) => request(`/api/orders/${id(orderId)}`, { method: "DELETE" }),
