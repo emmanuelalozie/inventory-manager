@@ -83,7 +83,8 @@ Paths below are relative to `src/main/java/com/example/inventix/` unless they st
 | F-20 | **v2 Run 3:** CSV export (`/api/export/*.csv`): UTF-8 with BOM, RFC 4180 quoting, formula-like text defused. Desktop Reports view with downloads; category filter, Categories dialog and unit cost in Products. | `export/CsvWriter.java`, `controller/ExportController.java`, `desktop/src/js/reports.js`, `desktop/src/js/products.js` |
 | F-21 | **Run 2 follow-ups:** bills of materials (`/api/products/{id}/components`, migration `V8`) with loop checks; completing a run uses components up (`CONSUMPTION`), all or nothing. Cancelling the rest of one PO line (`quantity_cancelled`, `cancel-remaining`), with orders settling as `CLOSED` or `CANCELLED`. Desktop Components editor, completion preview with shortages, "Cancel rest" and a printable purchase order. | `model/ProductComponent.java`, `service/impl/BillOfMaterialsServiceImpl.java`, `service/impl/ProductionRunServiceImpl.java`, `service/impl/PurchaseOrderServiceImpl.java`, `V8__po_line_cancel_and_components.sql`, `desktop/src/js/purchase-orders.js`, `desktop/src/js/production.js`, `desktop/src/js/products.js` |
 | F-22 | **Ops:** per-user data folder with a one-time copy from `./data` (O-15), and restore on next start from Settings or `POST /api/backup/restore` (O-14). `GET /api/backup` lists backups and folders. | `config/DataLocation.java`, `config/DataLocationPostProcessor.java`, `META-INF/spring.factories`, `service/impl/BackupServiceImpl.java`, `controller/BackupController.java`, `desktop/src/js/main.js` |
-| F-23 | **Platform:** Spring Boot 4.1.1 and Gradle 9.8.1 (O-3), with H2 still pinned to 2.2.224. | `build.gradle`, `gradle/wrapper/gradle-wrapper.properties`, test imports, `config/DataLocationPostProcessor.java` |
+| F-23 | **Platform:** Spring Boot 4.1.1 and Gradle 9.8.1 (O-3). | `build.gradle`, `gradle/wrapper/gradle-wrapper.properties`, test imports, `config/DataLocationPostProcessor.java` |
+| F-24 | **H2 2.4.240** (O-13): pinned to the version Boot 4.1 manages, after checking that 2.2.224 files and backups open unchanged. | `build.gradle` |
 
 **Tests added or updated** (`src/test/java/com/example/inventix/`):
 `controller/ProductControllerTest`, `controller/OrderControllerTest` (new), `service/ProductServiceTest`,
@@ -150,7 +151,7 @@ with Gradle **9.8.1**, by way of 3.5.16. Boot 4 changes made here:
   (`com.fasterxml.jackson.annotation.*`) are the same in Jackson 3.
 - springdoc 3.1.x (the line for Boot 4.1).
 
-H2 stays pinned to 2.2.224 (Boot 4.1 would bring 2.4.240), so database files and backups are unchanged (see O-13).
+H2 moved to 2.4.240 afterwards (F-24, O-13).
 
 **Was:** `build.gradle` used Spring Boot 3.3.5, out of open-source support since June 2025.
 
@@ -291,17 +292,22 @@ version) to serve `/swagger-ui.html` and `/v3/api-docs`, and keep `docs/API.md` 
 
 ### O-13. H2 file format changes on upgrade
 
-**Status:** open (risk).
-The database file is written by H2 2.2.224. Spring Boot 3.5 would bring H2 2.3.232, so `build.gradle` pins
-2.2.224 until the export/import below is done; then remove the `ext['h2.version']` line. H2 has changed its file format between
-versions before (2.1 → 2.2 files could not be opened by the other version), and the only supported upgrade path
-was a SQL export and re-import. A Spring Boot upgrade (O-3) can bump H2 the same way, and an old `.zip` backup
-has the same problem.
+**Status:** done for 2.4.240; stays a risk for later upgrades.
+`build.gradle` pins H2 to 2.4.240, the version Spring Boot 4.1 manages (it was 2.2.224). Before the change it was
+checked with the real app, not only the tests: H2 2.4.240 opened a database written by 2.2.224 with every
+product, movement and purchase order as before and could write to it, a backup `.zip` made by 2.2.224 restored
+into the new version unchanged, and 2.2.224 could still open the file afterwards. So no export or re-import was
+needed for this step.
 
-**Recommendation:** before any Boot or H2 upgrade, make a backup, then export everything with the old version
-(`SCRIPT TO 'inventix.sql'` in the H2 console; this includes Flyway's `flyway_schema_history` table). After the
-upgrade, move `data/` aside and run `RUNSCRIPT FROM 'inventix.sql'` against a new, empty database before starting
-the app. Try it on a copy first. Check the H2 version in `gradlew.bat dependencies` whenever Boot changes.
+H2 has changed its file format before (2.1 and 2.2 couldn't open each other's files), and the supported way
+across such a change is a SQL export and re-import. That is why the version stays pinned rather than left to
+Spring Boot: a Boot upgrade can't change it unnoticed.
+
+**Recommendation:** before changing `h2.version`, open a copy of a real database and an old backup with the new
+version the same way. If it can't open them: make a backup, export with the old version (`SCRIPT TO
+'inventix.sql'` in the H2 console; this includes Flyway's `flyway_schema_history` table), move `data/` aside after
+the upgrade and run `RUNSCRIPT FROM 'inventix.sql'` against a new, empty database before starting the app. Old
+backups need the same treatment before they can be restored.
 
 ### O-14. Restore is manual
 
