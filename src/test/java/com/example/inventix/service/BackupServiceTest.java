@@ -175,4 +175,16 @@ class BackupServiceTest {
         assertThat(service.pruneAutomaticBackups(0)).as("at least one is always kept").isEqualTo(1);
         assertThat(backupDir.resolve("inventix-auto-20261003-090000-1.zip")).exists();
     }
+
+    @Test
+    void serverMode_everyBackupActionIsNotAvailable() {
+        BackupService service = new BackupServiceImpl(fileDb, workDir.resolve("backups").toString(), "", false);
+
+        assertThatThrownBy(service::createBackup).isInstanceOf(BackupNotAvailableException.class);
+        assertThatThrownBy(service::createAutomaticBackup).isInstanceOf(BackupNotAvailableException.class);
+        assertThatThrownBy(service::getStatus).isInstanceOf(BackupNotAvailableException.class);
+        assertThatThrownBy(() -> service.requestRestore("x.zip")).isInstanceOf(BackupNotAvailableException.class);
+        assertThatThrownBy(service::cancelRestore).isInstanceOf(BackupNotAvailableException.class);
+        assertThat(workDir.resolve("backups")).doesNotExist();
+    }
 }

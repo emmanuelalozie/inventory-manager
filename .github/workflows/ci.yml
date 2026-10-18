@@ -33,6 +33,58 @@ jobs:
           name: test-report
           path: build/reports/tests/test/
 
+  postgres:
+    name: Backend tests on PostgreSQL
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_DB: inventix
+          POSTGRES_USER: inventix
+          POSTGRES_PASSWORD: inventix
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U inventix"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    # Every test that uses a database runs against PostgreSQL instead of the in-memory H2, as in server mode.
+    env:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://localhost:5432/inventix
+      SPRING_DATASOURCE_DRIVER_CLASS_NAME: org.postgresql.Driver
+      SPRING_DATASOURCE_USERNAME: inventix
+      SPRING_DATASOURCE_PASSWORD: inventix
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: gradle/actions/setup-gradle@v6
+
+      # The JPA slices first: they roll back, so they need the database still empty. Then everything, including
+      # the full-application tests, which leave their data behind.
+      - name: JPA and integration tests
+        run: >-
+          ./gradlew test --tests '*IntegrationTest' --tests '*RepositoryTest' --tests '*MappingTest'
+          --tests 'DataSeederTest' --tests 'PurchaseOrderCancelLineTest'
+        env:
+          SPRING_TEST_DATABASE_REPLACE: none
+
+      - name: All tests
+        run: ./gradlew test --rerun
+
+      - name: Upload test report
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: postgres-test-report
+          path: build/reports/tests/test/
+
   desktop:
     name: Desktop tests
     runs-on: ubuntu-latest

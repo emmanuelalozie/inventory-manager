@@ -21,8 +21,8 @@ public interface OrderItemRepository extends JpaRepository<OrderItem, Long> {
             + " from OrderItem i"
             + " where i.order.status in (com.example.inventix.model.OrderStatus.SHIPPED,"
             + " com.example.inventix.model.OrderStatus.DELIVERED)"
-            + " and (:start is null or i.order.createdAt >= :start)"
-            + " and (:endExclusive is null or i.order.createdAt < :endExclusive)"
+            + " and (cast(:start as LocalDateTime) is null or i.order.createdAt >= :start)"
+            + " and (cast(:endExclusive as LocalDateTime) is null or i.order.createdAt < :endExclusive)"
             + " group by i.product.id, i.product.name, i.product.sku"
             + " order by sum(i.quantity) desc, coalesce(sum(i.subtotal), 0) desc")
     List<Object[]> topSellers(@Param("start") LocalDateTime start,
