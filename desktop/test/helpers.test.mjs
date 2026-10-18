@@ -18,6 +18,7 @@ import {
   productRequestBody,
   reasonLabel,
   sortMovementsNewestFirst,
+  stocktakeLines,
   statusLabel,
   validateNote,
 } from "../src/js/helpers.js";
@@ -173,3 +174,29 @@ test("isoDate uses local time, and the default report range is this month so far
   assert.deepEqual(defaultReportRange(new Date(2026, 9, 17, 23, 30)), { from: "2026-10-01", to: "2026-10-17" });
 });
 
+
+test("stocktakeLines skips blank counts, flags bad ones and counts the differences", () => {
+  const products = [
+    { id: 1, quantity: 10 },
+    { id: 2, quantity: 4 },
+    { id: 3, quantity: 7 },
+    { id: 4, quantity: 0 },
+    { id: 5, quantity: 2 },
+  ];
+  const counts = new Map([
+    ["1", " 8 "],
+    ["2", "4"],
+    ["3", ""],
+    ["4", "-1"],
+    ["5", "2.5"],
+  ]);
+
+  const result = stocktakeLines(products, counts);
+
+  assert.deepEqual(result.lines, [
+    { productId: 1, countedQuantity: 8, expectedQuantity: 10 },
+    { productId: 2, countedQuantity: 4, expectedQuantity: 4 },
+  ]);
+  assert.deepEqual(result.invalid, [4, 5]);
+  assert.equal(result.changed, 1);
+});

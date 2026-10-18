@@ -1287,3 +1287,27 @@ textarea.invalid {
   }
 }
 
+
+/* ---------- Stocktake ---------- */
+.stocktake-form {
+  display: flex;
+  align-items: flex-end;
+  gap: 1rem;
+}
+
+.stocktake-form .grow {
+  flex: 1;
+}
+
+.count-input {
+  width: 6rem;
+  text-align: right;
+}
+
+.text-success {
+  color: var(--success);
+}
+
+.text-danger {
+  color: var(--danger);
+}

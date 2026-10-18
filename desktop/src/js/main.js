@@ -22,6 +22,7 @@ import {
   getLowStockThreshold,
   setLowStockThreshold,
 } from "./settings.js";
+import { initStocktake, showStocktake } from "./stocktake.js";
 import { initSuppliers, showSuppliers } from "./suppliers.js";
 import {
   clearFieldErrors,
@@ -38,6 +39,7 @@ import {
 const VIEWS = {
   dashboard: showDashboard,
   products: showProducts,
+  stocktake: showStocktake,
   orders: showOrders,
   "purchase-orders": showPurchaseOrders,
   production: showProduction,
@@ -49,6 +51,7 @@ const VIEWS = {
 const VIEW_TITLES = {
   dashboard: "Dashboard",
   products: "Products",
+  stocktake: "Stocktake",
   orders: "Orders",
   "purchase-orders": "Purchase orders",
   production: "Production",
@@ -294,6 +297,7 @@ function start() {
   initConnectionStatus();
   initDashboard();
   initProducts();
+  initStocktake();
   initOrders();
   initPurchaseOrders();
   initProduction();

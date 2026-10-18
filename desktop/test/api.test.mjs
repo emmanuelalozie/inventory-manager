@@ -18,6 +18,7 @@ import {
   purchaseOrdersApi,
   restockApi,
   stockMovementsApi,
+  stocktakeApi,
 } from "../src/js/api.js";
 
 /** Replaces fetch for one test. Returns the list of recorded calls. */
@@ -248,3 +249,17 @@ test("purchaseOrdersApi.cancelRemaining and productsApi.setComponents hit the ri
   ]);
 });
 
+
+test("stocktakeApi.apply posts the note and the counted lines", async (t) => {
+  const calls = mockFetch(t, { body: { counted: 1, changes: [] } });
+
+  await stocktakeApi.apply("October", [{ productId: 1, countedQuantity: 8, expectedQuantity: 10 }]);
+
+  assert.deepEqual(calls, [
+    {
+      url: `${DEFAULT_BASE_URL}/api/stocktake`,
+      method: "POST",
+      body: { note: "October", lines: [{ productId: 1, countedQuantity: 8, expectedQuantity: 10 }] },
+    },
+  ]);
+});

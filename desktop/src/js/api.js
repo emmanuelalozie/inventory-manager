@@ -319,6 +319,11 @@ export const ordersApi = {
 // Purchasing and production (v2 Run 2)
 // ---------------------------------------------------------------------------
 
+export const stocktakeApi = {
+  /** lines: [{ productId, countedQuantity, expectedQuantity }]. Resolves with { counted, changes }. */
+  apply: (note, lines) => request("/api/stocktake", { method: "POST", body: { note, lines } }),
+};
+
 export const suppliersApi = {
   /** All suppliers, by name. */
   list: () => request("/api/suppliers"),

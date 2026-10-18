@@ -183,3 +183,28 @@ export function defaultReportRange(today = new Date()) {
   return { from: isoDate(new Date(today.getFullYear(), today.getMonth(), 1)), to: isoDate(today) };
 }
 
+
+/**
+ * Builds the stocktake request lines from the products on the count sheet and the counts typed in (product id ->
+ * text). Blank counts are skipped (not counted). Returns { lines, invalid, changed }: the request lines, with the
+ * stock the sheet showed as expectedQuantity; the ids whose count isn't a whole number of 0 or more; and how many
+ * counted products differ from the recorded stock.
+ */
+export function stocktakeLines(products, counts) {
+  const lines = [];
+  const invalid = [];
+  let changed = 0;
+  for (const product of products) {
+    const text = String(counts.get(String(product.id)) ?? "").trim();
+    if (!text) continue;
+    if (!/^\d+$/.test(text) || !Number.isSafeInteger(Number(text))) {
+      invalid.push(product.id);
+      continue;
+    }
+    const counted = Number(text);
+    const expected = Number(product.quantity ?? 0);
+    if (counted !== expected) changed++;
+    lines.push({ productId: product.id, countedQuantity: counted, expectedQuantity: expected });
+  }
+  return { lines, invalid, changed };
+}

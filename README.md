@@ -18,7 +18,7 @@ Inventix is an inventory app for a small business run from one computer: a Sprin
 
 ## Why use it
 
-- **Stock adds up.** Every change (a sale, a cancellation, a receipt, a production run, the components it used, a manual adjustment) writes a movement with its reason, time, note and the order behind it. A manual adjustment needs a note, a change that would take stock below zero is refused, and two edits of the same product at once can't overwrite each other (the second gets a 409 and reloads).
+- **Stock adds up.** Every change (a sale, a cancellation, a receipt, a production run, the components it used, a manual adjustment) writes a movement with its reason, time, note and the order behind it. A manual adjustment needs a note, a stocktake sets everything you counted in one go (and refuses if stock moved while you were counting), a change that would take stock below zero is refused, and two edits of the same product at once can't overwrite each other (the second gets a 409 and reloads).
 - **Orders hold stock.** Adding an item to a pending order takes the stock straight away, and lowering, removing or cancelling gives it back. The unit price is fixed when the item is added. Shipped and delivered orders are kept as a record and can't be deleted, and a retried create with the same `Idempotency-Key` returns the first order instead of making a second.
 - **Restocking is a draft, not a surprise.** Each product is bought from a supplier or made in-house, with a reorder point and quantity. Restock (or Restock all) adds the reorder quantity to that supplier's draft purchase order or plans a production run, and counts what's already on order, so nothing is bought or made until you say so.
 - **Deliveries can come in parts.** A purchase order is received in as many parts as arrive, each part adds stock and updates the product's unit cost, and the rest of a line (or the whole order) can be closed when it won't come. It prints as a clean page for the supplier.
@@ -44,6 +44,7 @@ Inventix is an inventory app for a small business run from one computer: a Sprin
 | --- | --- |
 | Add, edit, delete or search products | Products |
 | Add or take away stock by hand, with a note | Stock, on the product (or Adjust on the dashboard's low-stock list) |
+| Count the shelf and book the differences | Stocktake |
 | See every change to a product's stock | History, on the product |
 | Manage categories, or filter products by one | Categories, and the category filter, in Products |
 | Take an order, change items, ship, deliver or cancel | Orders |
@@ -131,6 +132,7 @@ The backend owns every rule: the window only shows what the API returns and send
 | `service/impl/PurchaseOrderServiceImpl.java` | Purchase orders: drafts, receipts in parts, cancelling the rest of a line, closing |
 | `service/impl/ProductionRunServiceImpl.java`, `BillOfMaterialsServiceImpl.java` | Production runs and the components they use up, with loop checks |
 | `service/impl/RestockServiceImpl.java` | The reorder list and Restock |
+| `service/impl/StocktakeServiceImpl.java` | Stocktakes: counted stock booked as adjustments, refusing stale count sheets |
 | `service/impl/ReportServiceImpl.java`, `export/CsvWriter.java` | Stock value, movements and top sellers; CSV with a byte order mark for Excel |
 | `service/impl/BackupServiceImpl.java` | Backups to `.zip` and scheduling a restore |
 | `service/impl/CategoryServiceImpl.java`, `SupplierServiceImpl.java`, `StockMovementServiceImpl.java` | Categories, suppliers, reading the ledger |
@@ -138,7 +140,7 @@ The backend owns every rule: the window only shows what the API returns and send
 | `exception/GlobalExceptionHandler.java` | Turns every exception into the JSON error body |
 | `src/main/resources/db/migration/` | Flyway migrations `V1` to `V8` |
 | `desktop/src/js/main.js`, `api.js`, `ui.js`, `helpers.js` | Routing and the connection light; every endpoint; toasts, dialogs and formatting; pure helpers the tests cover |
-| `desktop/src/js/dashboard.js`, `products.js`, `orders.js`, `purchase-orders.js`, `production.js`, `suppliers.js`, `reports.js`, `settings.js` | One file per screen |
+| `desktop/src/js/dashboard.js`, `products.js`, `stocktake.js`, `orders.js`, `purchase-orders.js`, `production.js`, `suppliers.js`, `reports.js`, `settings.js` | One file per screen |
 | `desktop/scripts/dev-server.js` | The dependency-free UI server on port 1420 |
 
 All Java packages are under `src/main/java/com/example/inventix`.
