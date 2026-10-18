@@ -85,6 +85,7 @@ Paths below are relative to `src/main/java/com/example/inventix/` unless they st
 | F-22 | **Ops:** per-user data folder with a one-time copy from `./data` (O-15), and restore on next start from Settings or `POST /api/backup/restore` (O-14). `GET /api/backup` lists backups and folders. | `config/DataLocation.java`, `config/DataLocationPostProcessor.java`, `META-INF/spring.factories`, `service/impl/BackupServiceImpl.java`, `controller/BackupController.java`, `desktop/src/js/main.js` |
 | F-23 | **Platform:** Spring Boot 4.1.1 and Gradle 9.8.1 (O-3). | `build.gradle`, `gradle/wrapper/gradle-wrapper.properties`, test imports, `config/DataLocationPostProcessor.java` |
 | F-24 | **H2 2.4.240** (O-13): pinned to the version Boot 4.1 manages, after checking that 2.2.224 files and backups open unchanged. | `build.gradle` |
+| F-25 | **Automatic backups** (O-14): `inventix-auto-<timestamp>.zip` when the newest is older than `inventix.backup.auto.interval` (24h, checked a minute after start and hourly) and on shutdown; only the newest `inventix.backup.auto.keep` (14) are kept, and Back up now files are never deleted. A failed backup is logged and retried at the next check. Pointing `INVENTIX_BACKUP_DIR` at a synced folder takes the copies off the machine. | `config/AutomaticBackups.java`, `service/impl/BackupServiceImpl.java`, `application.properties` |
 
 **Tests added or updated** (`src/test/java/com/example/inventix/`):
 `controller/ProductControllerTest`, `controller/OrderControllerTest` (new), `service/ProductServiceTest`,
@@ -318,7 +319,7 @@ database in place before the database is opened, keeping the replaced file as
 database as it was and clears the request. Covered by `BackupServiceTest` (full round trip on a real H2 file) and
 `DataLocationTest`.
 
-**Still open:** a retention setting and scheduled backups; backups still stay on the same disk until copied.
+**Scheduled backups and retention:** fixed by F-25. Backups leave the machine only if `INVENTIX_BACKUP_DIR` is a synced folder; uploading to storage the business controls (S3, Backblaze B2) is still open.
 
 ### O-15. Database location depends on the working directory
 

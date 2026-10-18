@@ -25,7 +25,11 @@ import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.time.ZoneId;
 import java.util.List;
+import java.util.Optional;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
 /**
@@ -39,6 +43,13 @@ public class BackupServiceImpl implements BackupService {
     private static final Logger log = LoggerFactory.getLogger(BackupServiceImpl.class);
 
     private static final DateTimeFormatter FILE_TIMESTAMP = DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss");
+
+    static final String MANUAL_PREFIX = "inventix-backup-";
+    // Automatic backups get their own prefix, so clean-up can never delete a backup someone made by hand.
+    static final String AUTOMATIC_PREFIX = "inventix-auto-";
+    // inventix-auto-20261018-091500.zip, or -1, -2... for two in the same second.
+    private static final Pattern AUTOMATIC_NAME =
+            Pattern.compile(Pattern.quote(AUTOMATIC_PREFIX) + "(\\d{8}-\\d{6})(?:-(\\d+))?\\.zip");
 
     // org.h2.api.ErrorCode.DATABASE_IS_NOT_PERSISTENT; H2 is only a runtime dependency, so the value is copied here.
     static final int H2_DATABASE_IS_NOT_PERSISTENT = 90126;
@@ -133,13 +144,72 @@ public class BackupServiceImpl implements BackupService {
 
     @Override
     public BackupResponse createBackup() {
+        return writeBackup(MANUAL_PREFIX);
+    }
+
+    @Override
+    public BackupResponse createAutomaticBackup() {
+        return writeBackup(AUTOMATIC_PREFIX);
+    }
+
+    @Override
+    public Optional<Instant> latestAutomaticBackup() {
+        return automaticBackupsNewestFirst().stream().findFirst().map(AutomaticBackup::takenAt);
+    }
+
+    @Override
+    public int pruneAutomaticBackups(int keep) {
+        List<AutomaticBackup> backups = automaticBackupsNewestFirst();
+        int deleted = 0;
+        for (AutomaticBackup old : backups.subList(Math.min(Math.max(keep, 1), backups.size()), backups.size())) {
+            try {
+                Files.deleteIfExists(old.file());
+                deleted++;
+                log.info("Deleted old automatic backup {}", old.file());
+            } catch (IOException e) {
+                log.warn("Could not delete old automatic backup {}: {}", old.file(), e.toString());
+            }
+        }
+        return deleted;
+    }
+
+    private record AutomaticBackup(Path file, Instant takenAt, int sameSecondIndex) {
+    }
+
+    // Ordered by the time in the file name, not the modification time, which a synced folder may change.
+    private List<AutomaticBackup> automaticBackupsNewestFirst() {
+        if (!Files.isDirectory(backupDir)) {
+            return List.of();
+        }
+        try (Stream<Path> files = Files.list(backupDir)) {
+            return files.filter(Files::isRegularFile)
+                    .map(f -> {
+                        Matcher m = AUTOMATIC_NAME.matcher(f.getFileName().toString());
+                        if (!m.matches()) {
+                            return null;
+                        }
+                        Instant takenAt = LocalDateTime.parse(m.group(1), FILE_TIMESTAMP)
+                                .atZone(ZoneId.systemDefault()).toInstant();
+                        return new AutomaticBackup(f, takenAt, m.group(2) == null ? 0 : Integer.parseInt(m.group(2)));
+                    })
+                    .filter(b -> b != null)
+                    .sorted(Comparator.comparing(AutomaticBackup::takenAt)
+                            .thenComparingInt(AutomaticBackup::sameSecondIndex).reversed())
+                    .toList();
+        } catch (IOException e) {
+            log.warn("Could not list the backup folder {}: {}", backupDir, e.toString());
+            return List.of();
+        }
+    }
+
+    private BackupResponse writeBackup(String prefix) {
         try {
             Files.createDirectories(backupDir);
         } catch (IOException e) {
             throw new BackupFailedException("Could not create the backup folder " + backupDir, e);
         }
 
-        Path target = nextBackupFile();
+        Path target = nextBackupFile(prefix);
         // The path is built here from the configured folder and a timestamp; quotes are escaped anyway.
         String sql = "BACKUP TO '" + target.toString().replace("'", "''") + "'";
         try {
@@ -162,8 +232,8 @@ public class BackupServiceImpl implements BackupService {
     }
 
     // Two backups in the same second get a numeric suffix instead of overwriting each other.
-    private Path nextBackupFile() {
-        String base = "inventix-backup-" + LocalDateTime.now().format(FILE_TIMESTAMP);
+    private Path nextBackupFile(String prefix) {
+        String base = prefix + LocalDateTime.now().format(FILE_TIMESTAMP);
         Path candidate = backupDir.resolve(base + ".zip");
         for (int i = 1; Files.exists(candidate); i++) {
             candidate = backupDir.resolve(base + "-" + i + ".zip");
