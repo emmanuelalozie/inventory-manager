@@ -291,14 +291,15 @@ version) to serve `/swagger-ui.html` and `/v3/api-docs`, and keep `docs/API.md` 
 
 ### O-13. H2 file format changes on upgrade
 
-**Status:** open (risk).
-The database file is written by H2 2.2.224. Spring Boot 3.5 would bring H2 2.3.232, so `build.gradle` pins
-2.2.224 until the export/import below is done; then remove the `ext['h2.version']` line. H2 has changed its file format between
+**Status:** accepted (decided 2026-10-18): H2 stays at 2.2.224. No converter is built into the app and no
+migration steps are planned; revisit only if a needed fix or feature exists only in a newer H2.
+The database file is written by H2 2.2.224. Spring Boot 4.1 would bring H2 2.4.240, so `build.gradle` pins
+2.2.224 with the `ext['h2.version']` line, and that line stays when Boot is upgraded. H2 has changed its file format between
 versions before (2.1 → 2.2 files could not be opened by the other version), and the only supported upgrade path
 was a SQL export and re-import. A Spring Boot upgrade (O-3) can bump H2 the same way, and an old `.zip` backup
 has the same problem.
 
-**Recommendation:** before any Boot or H2 upgrade, make a backup, then export everything with the old version
+**If H2 is ever upgraded:** make a backup, then export everything with the old version
 (`SCRIPT TO 'inventix.sql'` in the H2 console; this includes Flyway's `flyway_schema_history` table). After the
 upgrade, move `data/` aside and run `RUNSCRIPT FROM 'inventix.sql'` against a new, empty database before starting
 the app. Try it on a copy first. Check the H2 version in `gradlew.bat dependencies` whenever Boot changes.
