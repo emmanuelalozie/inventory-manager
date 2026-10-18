@@ -78,6 +78,12 @@ Paths below are relative to `src/main/java/com/example/inventix/` unless they st
 | F-15 | **v2 Run 2:** Production runs (`/api/production-runs`, migration `V6`). `PLANNED` → `COMPLETED` adds stock with a `PRODUCTION` movement (`productionRunId`); runs don't consume components. | `model/ProductionRun*.java`, `service/impl/ProductionRunServiceImpl.java`, `controller/ProductionRunController.java`, `V6__production_runs.sql` |
 | F-16 | **v2 Run 2:** Reorder list (`GET /api/reorder-list`, with quantity on order and what is missing) and Restock (`POST /api/products/{id}/restock`, `POST /api/reorder-list/restock`): adds to the supplier's draft purchase order or plans a production run, reusing an existing draft or planned run. | `service/impl/RestockServiceImpl.java`, `controller/RestockController.java` |
 | F-17 | **v2 Run 2:** Desktop Suppliers, Purchase orders (draft editor, receive dialog) and Production views; Restocking section in the product form; Reorder card with Restock and Restock all on the dashboard; history links to purchase orders and runs. | `desktop/src/js/suppliers.js`, `desktop/src/js/purchase-orders.js`, `desktop/src/js/production.js`, `desktop/src/js/dashboard.js`, `desktop/src/js/products.js` |
+| F-18 | **v2 Run 3:** Categories (`/api/categories`, migration `V7`) and a `unitCost` per product; receiving a purchase order line with a cost updates the product's cost. Products can be filtered by `categoryId`. | `model/Category.java`, `service/impl/CategoryServiceImpl.java`, `controller/CategoryController.java`, `V7__categories_and_unit_cost.sql` |
+| F-19 | **v2 Run 3:** Reports (`/api/reports/stock-value`, `/movements`, `/top-sellers`) over whole days (`DateRange`), and `from`/`to` plus `X-Total-Count` on `GET /api/stock-movements`. | `service/impl/ReportServiceImpl.java`, `controller/ReportController.java`, `service/DateRange.java` |
+| F-20 | **v2 Run 3:** CSV export (`/api/export/*.csv`): UTF-8 with BOM, RFC 4180 quoting, formula-like text defused. Desktop Reports view with downloads; category filter, Categories dialog and unit cost in Products. | `export/CsvWriter.java`, `controller/ExportController.java`, `desktop/src/js/reports.js`, `desktop/src/js/products.js` |
+| F-21 | **Run 2 follow-ups:** bills of materials (`/api/products/{id}/components`, migration `V8`) with loop checks; completing a run uses components up (`CONSUMPTION`), all or nothing. Cancelling the rest of one PO line (`quantity_cancelled`, `cancel-remaining`), with orders settling as `CLOSED` or `CANCELLED`. Desktop Components editor, completion preview with shortages, "Cancel rest" and a printable purchase order. | `model/ProductComponent.java`, `service/impl/BillOfMaterialsServiceImpl.java`, `service/impl/ProductionRunServiceImpl.java`, `service/impl/PurchaseOrderServiceImpl.java`, `V8__po_line_cancel_and_components.sql`, `desktop/src/js/purchase-orders.js`, `desktop/src/js/production.js`, `desktop/src/js/products.js` |
+| F-22 | **Ops:** per-user data folder with a one-time copy from `./data` (O-15), and restore on next start from Settings or `POST /api/backup/restore` (O-14). `GET /api/backup` lists backups and folders. | `config/DataLocation.java`, `config/DataLocationPostProcessor.java`, `META-INF/spring.factories`, `service/impl/BackupServiceImpl.java`, `controller/BackupController.java`, `desktop/src/js/main.js` |
+| F-23 | **Platform:** Spring Boot 4.1.1 and Gradle 9.8.1 (O-3), with H2 still pinned to 2.2.224. | `build.gradle`, `gradle/wrapper/gradle-wrapper.properties`, test imports, `config/DataLocationPostProcessor.java` |
 
 **Tests added or updated** (`src/test/java/com/example/inventix/`):
 `controller/ProductControllerTest`, `controller/OrderControllerTest` (new), `service/ProductServiceTest`,
@@ -131,22 +137,22 @@ users with BCrypt hashes, H2 console off) **before** changing `server.address`.
 
 ### O-3. Spring Boot 3.3.x is out of open-source support
 
-**Status:** partly fixed. `build.gradle` now uses Spring Boot **3.5.16** with `io.spring.dependency-management`
-1.1.7. H2 is pinned to 2.2.224 (`ext['h2.version']`) so existing database files and backups still open (see O-13).
-The tests' `@MockBean` (deprecated in 3.4) was replaced with `@MockitoBean`. 3.5.x is itself out of OSS support,
-so the move to 4.x below is still open.
+**Status:** fixed. `build.gradle` uses Spring Boot **4.1.1** (Spring Framework 7, Hibernate 7.4, Jackson 3, Flyway 12)
+with Gradle **9.8.1**, by way of 3.5.16. Boot 4 changes made here:
 
-**Was:** `build.gradle` used Spring Boot **3.3.5**. Open-source support for 3.3.x ended on **30 June 2025** (last release
-3.3.13), so it no longer gets security fixes. 3.4.x ended 31 December 2025 and 3.5.x ended 30 June 2026. The
-supported lines are now 4.0.x and 4.1.x.
+- Modular starters: `spring-boot-starter-webmvc` instead of `-web`, `spring-boot-starter-flyway` (Flyway's
+  auto-configuration is no longer in the core module), `spring-boot-h2console` for `/h2-console`, and the
+  `spring-boot-starter-webmvc-test` / `-data-jpa-test` test starters.
+- Test slice packages moved (`org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest`,
+  `org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest`, `org.springframework.boot.jpa.test.autoconfigure.TestEntityManager`).
+- `EnvironmentPostProcessor` moved to `org.springframework.boot` (and its `spring.factories` key with it).
+- Jackson 3: the test's `ObjectMapper` is `tools.jackson.databind.ObjectMapper`. The annotations used in the app
+  (`com.fasterxml.jackson.annotation.*`) are the same in Jackson 3.
+- springdoc 3.1.x (the line for Boot 4.1).
 
-**Recommendation:**
-- **Next step (low risk):** move to the latest **3.5.x** (3.5.16 at the time of writing). It stays on Spring
-  Framework 6 / Jakarta EE 10 and Java 17, so code changes should be small. Bump
-  `io.spring.dependency-management` too, then run the full test suite.
-- **Later (major migration):** plan a separate move to **Spring Boot 4.x**. Review the official 4.0 migration
-  guide first; expect changes around Spring Framework 7, Jackson, Hibernate and Spring Batch. 3.5.x is also out
-  of OSS support, so don't stay on it for long.
+H2 stays pinned to 2.2.224 (Boot 4.1 would bring 2.4.240), so database files and backups are unchanged (see O-13).
+
+**Was:** `build.gradle` used Spring Boot 3.3.5, out of open-source support since June 2025.
 
 ### O-4. H2 in-memory database only
 
@@ -299,24 +305,22 @@ the app. Try it on a copy first. Check the H2 version in `gradlew.bat dependenci
 
 ### O-14. Restore is manual
 
-**Status:** open.
-There is a backup endpoint but no restore endpoint or button. The steps (in the README) are: stop the backend,
-move `data/inventix.mv.db` aside, unzip the backup into `data/`, start the backend. Backups are never deleted, so
-`./backups` grows until it is cleaned up by hand, and they are kept on the same disk as the database.
+**Status:** fixed. Settings lists the backups; **Restore…** (or `POST /api/backup/restore`) writes
+`restore-pending.txt` in the data folder, and on the next start `DataLocationPostProcessor` puts the backup's
+database in place before the database is opened, keeping the replaced file as
+`inventix-before-restore-<timestamp>.mv.db`. A backup without a database, or any error, leaves the current
+database as it was and clears the request. Covered by `BackupServiceTest` (full round trip on a real H2 file) and
+`DataLocationTest`.
 
-**Recommendation:** document copying backups to another drive or cloud folder. Later, consider a restore command
-(it needs the app to close the database first), a retention setting, and a scheduled backup.
+**Still open:** a retention setting and scheduled backups; backups still stay on the same disk until copied.
 
 ### O-15. Database location depends on the working directory
 
-**Status:** open.
-`./data/inventix` and `./backups` are relative to the folder the backend is started from. Starting it from
-another folder (for example a jar run from `Downloads`) silently creates a new empty database there, which is
-then seeded with sample data. Only one process can open the file at a time (`inventix.lock.db`), so a second
-backend, or an external tool such as a stand-alone H2 console, fails with "database may be already in use".
-
-**Recommendation:** set an absolute path (e.g. under `%LOCALAPPDATA%\Inventix`) when the app is packaged as a
-single app (Tauri sidecar), and log the resolved database path on startup.
+**Status:** fixed. `inventix.home` defaults to a per-user folder (`%LOCALAPPDATA%\Inventix`,
+`~/Library/Application Support/Inventix`, `~/.local/share/inventix`), with the database in `{home}/data` and backups in
+`{home}/backups`, wherever the backend is started from. `INVENTIX_HOME` and `INVENTIX_DATA_DIR` override it. The
+first start copies a database from the old `./data` folder when the new folder has none (the original is left in
+place), and the resolved path is logged and shown in Settings (`GET /api/backup`).
 
 ### O-16. Ledger follow-ups
 
@@ -328,19 +332,21 @@ single app (Tauri sidecar), and log the resolved database path on startup.
 - Deleting a product also deletes its movements. If history must survive deletes, switch to archiving products
   instead of deleting them.
 - `locationId` is always `null` until multi-location stock exists.
-- Movements are listed newest first with no date range filter or total count; reports (Run 3) will need both.
+- *Done in Run 3:* movements can be filtered by a range of days and return a total count.
 
 ## 5. Roadmap
 
 Done in v2 Run 1: persistent storage, backups, local-only access, response DTOs and the stock movement ledger.
 Done in v2 Run 2: suppliers, purchase orders with partial receipts, production runs, buy/make source, reorder
 points and the Restock action (F-13 to F-17).
+Done in v2 Run 3: categories, unit cost, reports and CSV export (F-18 to F-20).
 
 Still planned:
 
-- **Run 2 follow-ups:** bills of materials (a production run that uses up components), a purchase order PDF or
-  email to send to the supplier, and partial cancellation of a single line
-- **Run 3:** categories, unit cost, reports (stock value, movements by date range, top sellers) and CSV export
+- **Run 2 follow-ups still open:** emailing a purchase order straight to the supplier (it can be printed or saved
+  as PDF from the print dialog), and planning component purchases from production runs
+- **Run 3 follow-ups:** charts on the Reports view, a time zone setting for date ranges, costs per receipt (average
+  cost) instead of last purchase cost
 - **Later:** ship backend and desktop as one app (Tauri sidecar with a bundled Java runtime), multi-location stock,
   demand forecasting
 - Role-based access control is not planned while the app has one user on one machine (see O-2)

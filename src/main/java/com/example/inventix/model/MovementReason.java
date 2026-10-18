@@ -12,6 +12,8 @@ public enum MovementReason {
     RECEIPT,
     /** Stock made in-house. */
     PRODUCTION,
+    /** Components used up by a completed production run. */
+    CONSUMPTION,
     /** Manual correction or initial stock; always has a note. */
     ADJUSTMENT
 }

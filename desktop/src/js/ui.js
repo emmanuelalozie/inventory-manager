@@ -314,3 +314,16 @@ export function showLoadError(container, error, context) {
   renderPlaceholder(container, "error", message);
   if (!(error instanceof NetworkError)) showError(error, context);
 }
+
+/** Saves a downloaded file (e.g. a CSV export) through the browser's or webview's normal download handling. */
+export function saveFile(blob, fileName) {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = fileName;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 10000);
+}
+

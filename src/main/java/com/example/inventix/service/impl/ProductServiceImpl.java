@@ -10,6 +10,7 @@ import com.example.inventix.model.MovementReason;
 import com.example.inventix.model.Product;
 import com.example.inventix.model.ProductSource;
 import com.example.inventix.model.StockMovement;
+import com.example.inventix.repository.CategoryRepository;
 import com.example.inventix.repository.OrderItemRepository;
 import com.example.inventix.repository.ProductRepository;
 import com.example.inventix.repository.SupplierRepository;
@@ -33,20 +34,24 @@ public class ProductServiceImpl implements ProductService {
 
     static final String INITIAL_STOCK_NOTE = "Initial stock";
 
-    static final Set<String> SORT_FIELDS = Set.of("id", "name", "sku", "price", "quantity", "createdAt", "updatedAt");
+    static final Set<String> SORT_FIELDS = Set.of("id", "name", "sku", "price", "unitCost", "quantity", "createdAt",
+            "updatedAt");
 
     private final ProductRepository productRepository;
     private final OrderItemRepository orderItemRepository;
     private final StockMovementRepository stockMovementRepository;
     private final SupplierRepository supplierRepository;
+    private final CategoryRepository categoryRepository;
 
     @Autowired
     public ProductServiceImpl(ProductRepository productRepository, OrderItemRepository orderItemRepository,
-                              StockMovementRepository stockMovementRepository, SupplierRepository supplierRepository) {
+                              StockMovementRepository stockMovementRepository, SupplierRepository supplierRepository,
+                              CategoryRepository categoryRepository) {
         this.productRepository = productRepository;
         this.orderItemRepository = orderItemRepository;
         this.stockMovementRepository = stockMovementRepository;
         this.supplierRepository = supplierRepository;
+        this.categoryRepository = categoryRepository;
     }
 
     @Override
@@ -87,6 +92,10 @@ public class ProductServiceImpl implements ProductService {
 
         productDetails.setSku(normalizeSku(productDetails.getSku()));
         checkSourcing(productDetails);
+        if (productDetails.getSource() != ProductSource.MAKE && productRepository.hasComponents(id)) {
+            throw new BadRequestException("This product has components, so it must stay made in-house (MAKE). "
+                    + "Remove its components first.");
+        }
         if (productRepository.existsBySkuAndIdNot(productDetails.getSku(), id)) {
             throw new DuplicateSkuException("A product with SKU '" + productDetails.getSku() + "' already exists");
         }
@@ -99,6 +108,8 @@ public class ProductServiceImpl implements ProductService {
         existingProduct.setSupplierId(productDetails.getSupplierId());
         existingProduct.setReorderPoint(productDetails.getReorderPoint());
         existingProduct.setReorderQuantity(productDetails.getReorderQuantity());
+        existingProduct.setCategoryId(productDetails.getCategoryId());
+        existingProduct.setUnitCost(productDetails.getUnitCost());
 
         return productRepository.save(existingProduct);
     }
@@ -115,9 +126,10 @@ public class ProductServiceImpl implements ProductService {
     }
 
     @Override
-    public Page<Product> searchProducts(String query, Integer page, Integer size, String sort) {
+    public Page<Product> searchProducts(String query, Long categoryId, Integer page, Integer size, String sort) {
         String pattern = query == null || query.isBlank() ? null : "%" + escapeLike(query.trim().toLowerCase(Locale.ROOT)) + "%";
-        return productRepository.search(pattern, Paging.pageable(page, size, Paging.sort(sort, SORT_FIELDS, "id")));
+        return productRepository.search(pattern, categoryId,
+                Paging.pageable(page, size, Paging.sort(sort, SORT_FIELDS, "id")));
     }
 
     @Override
@@ -173,6 +185,10 @@ public class ProductServiceImpl implements ProductService {
         if (productRepository.isOnProductionRun(id)) {
             throw new ProductInUseException("Product " + id + " has production runs and cannot be deleted");
         }
+        if (productRepository.isUsedAsComponent(id)) {
+            throw new ProductInUseException("Product " + id + " is a component of other products and cannot be deleted");
+        }
+        productRepository.deleteComponentsOf(id);
         // The ledger rows point at the product (foreign key), so its history goes with it.
         stockMovementRepository.deleteByProductId(id);
         productRepository.deleteById(id);
@@ -196,8 +212,11 @@ public class ProductServiceImpl implements ProductService {
         return text.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_");
     }
 
-    // Made products have no supplier, and a supplier must exist. A missing source means BUY.
+    // Made products have no supplier, and a supplier and category must exist. A missing source means BUY.
     private void checkSourcing(Product product) {
+        if (product.getCategoryId() != null && !categoryRepository.existsById(product.getCategoryId())) {
+            throw new BadRequestException("Category " + product.getCategoryId() + " doesn't exist");
+        }
         if (product.getSource() == null) {
             product.setSource(ProductSource.BUY);
         }

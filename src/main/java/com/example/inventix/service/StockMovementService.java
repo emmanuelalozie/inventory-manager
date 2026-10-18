@@ -3,6 +3,8 @@ package com.example.inventix.service;
 import com.example.inventix.model.MovementReason;
 import com.example.inventix.model.StockMovement;
 
+import org.springframework.data.domain.Page;
+
 import java.util.List;
 
 /**
@@ -25,4 +27,10 @@ public interface StockMovementService {
      * @throws com.example.inventix.exception.ProductNotFoundException if the product doesn't exist
      */
     List<StockMovement> getMovementsForProduct(Long productId, int page, int size);
+
+    /**
+     * One page of movements, newest first, optionally filtered by product, reason and a range of days, with the
+     * total number of matches.
+     */
+    Page<StockMovement> searchMovements(Long productId, MovementReason reason, DateRange range, int page, int size);
 }

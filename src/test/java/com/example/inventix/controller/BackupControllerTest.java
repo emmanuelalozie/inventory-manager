@@ -1,21 +1,25 @@
 package com.example.inventix.controller;
 
 import com.example.inventix.dto.BackupResponse;
+import com.example.inventix.dto.BackupStatusResponse;
 import com.example.inventix.exception.BackupFailedException;
 import com.example.inventix.exception.BackupNotAvailableException;
 import com.example.inventix.service.BackupService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
+import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
+import org.springframework.http.MediaType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.io.IOException;
 import java.time.Instant;
+import java.util.List;
 
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -71,10 +75,33 @@ class BackupControllerTest {
     }
 
     @Test
-    void getBackup_isNotAllowed() throws Exception {
+    void getBackup_returnsFoldersBackupsAndPendingRestore() throws Exception {
+        when(backupService.getStatus()).thenReturn(new BackupStatusResponse("C:\\data\\inventix.mv.db", "C:\\backups",
+                null, List.of(new BackupStatusResponse.Backup("inventix-backup-20261017-091500.zip", 2048,
+                        Instant.parse("2026-10-17T09:15:00Z")))));
+
         mockMvc.perform(get("/api/backup"))
-                .andExpect(status().isMethodNotAllowed());
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.databaseFile").value("C:\\data\\inventix.mv.db"))
+                .andExpect(jsonPath("$.backups[0].fileName").value("inventix-backup-20261017-091500.zip"));
 
         verify(backupService, never()).createBackup();
+    }
+
+    @Test
+    void restore_isScheduled_validated_andCancellable() throws Exception {
+        when(backupService.requestRestore("inventix-backup-20261017-091500.zip")).thenReturn(
+                new BackupStatusResponse(null, "C:\\backups", "inventix-backup-20261017-091500.zip", List.of()));
+        when(backupService.cancelRestore()).thenReturn(new BackupStatusResponse(null, "C:\\backups", null, List.of()));
+
+        mockMvc.perform(post("/api/backup/restore").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"fileName\":\"inventix-backup-20261017-091500.zip\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.pendingRestore").value("inventix-backup-20261017-091500.zip"));
+        mockMvc.perform(post("/api/backup/restore").contentType(MediaType.APPLICATION_JSON).content("{}"))
+                .andExpect(status().isBadRequest());
+        mockMvc.perform(delete("/api/backup/restore"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.pendingRestore").doesNotExist());
     }
 }

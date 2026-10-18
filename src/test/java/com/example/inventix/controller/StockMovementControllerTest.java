@@ -5,14 +5,17 @@ import com.example.inventix.exception.ProductNotFoundException;
 import com.example.inventix.model.MovementReason;
 import com.example.inventix.model.Product;
 import com.example.inventix.model.StockMovement;
+import com.example.inventix.service.DateRange;
 import com.example.inventix.service.StockMovementService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
+import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
+import org.springframework.data.domain.PageImpl;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 
@@ -24,6 +27,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -87,26 +91,39 @@ class StockMovementControllerTest {
 
     @Test
     void getMovements_withoutFilters_usesDefaults() throws Exception {
-        when(stockMovementService.getMovements(null, null, 0, 100)).thenReturn(List.of(movement()));
+        when(stockMovementService.searchMovements(null, null, DateRange.ALL, 0, 100))
+                .thenReturn(new PageImpl<>(List.of(movement())));
 
         mockMvc.perform(get("/api/stock-movements"))
                 .andExpect(status().isOk())
+                .andExpect(header().string("X-Total-Count", "1"))
                 .andExpect(jsonPath("$[0].reason").value("SALE"));
 
-        verify(stockMovementService).getMovements(null, null, 0, 100);
+        verify(stockMovementService).searchMovements(null, null, DateRange.ALL, 0, 100);
     }
 
     @Test
     void getMovements_passesProductAndReasonFilters() throws Exception {
-        when(stockMovementService.getMovements(1L, MovementReason.ADJUSTMENT, 0, 50)).thenReturn(List.of());
+        DateRange october = new DateRange(LocalDate.of(2026, 10, 1), LocalDate.of(2026, 10, 31));
+        when(stockMovementService.searchMovements(1L, MovementReason.ADJUSTMENT, october, 0, 50))
+                .thenReturn(new PageImpl<>(List.of()));
 
         mockMvc.perform(get("/api/stock-movements")
                         .param("productId", "1")
                         .param("reason", "ADJUSTMENT")
+                        .param("from", "2026-10-01")
+                        .param("to", "2026-10-31")
                         .param("size", "50"))
                 .andExpect(status().isOk());
 
-        verify(stockMovementService).getMovements(1L, MovementReason.ADJUSTMENT, 0, 50);
+        verify(stockMovementService).searchMovements(1L, MovementReason.ADJUSTMENT, october, 0, 50);
+    }
+
+    @Test
+    void getMovements_returns400_whenFromIsAfterTo() throws Exception {
+        mockMvc.perform(get("/api/stock-movements").param("from", "2026-10-31").param("to", "2026-10-01"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("from (2026-10-31) must not be after to (2026-10-01)"));
     }
 
     @Test
@@ -115,12 +132,12 @@ class StockMovementControllerTest {
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.message").value("Invalid value 'THEFT' for parameter 'reason'"));
 
-        verify(stockMovementService, never()).getMovements(any(), any(), anyInt(), anyInt());
+        verify(stockMovementService, never()).searchMovements(any(), any(), any(), anyInt(), anyInt());
     }
 
     @Test
     void getMovements_returns400_forBadPageSize() throws Exception {
-        when(stockMovementService.getMovements(null, null, 0, 1000))
+        when(stockMovementService.searchMovements(null, null, DateRange.ALL, 0, 1000))
                 .thenThrow(new BadRequestException("size must be between 1 and 500"));
 
         mockMvc.perform(get("/api/stock-movements").param("size", "1000"))

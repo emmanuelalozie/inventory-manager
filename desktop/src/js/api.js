@@ -115,7 +115,7 @@ function notifyBaseUrlChange(url) {
  */
 async function request(
   path,
-  { method = "GET", body, headers: extraHeaders, timeoutMs = REQUEST_TIMEOUT_MS, withTotal = false } = {}
+  { method = "GET", body, headers: extraHeaders, timeoutMs = REQUEST_TIMEOUT_MS, withTotal = false, asFile = false } = {}
 ) {
   const baseUrl = getBaseUrl();
   const headers = { Accept: "application/json", ...extraHeaders };
@@ -150,6 +150,12 @@ async function request(
     return null;
   }
 
+  // A download: hand back the bytes and the server's file name instead of parsing JSON.
+  if (asFile && response.ok) {
+    const disposition = (response.headers && response.headers.get("Content-Disposition")) || "";
+    return { blob: await response.blob(), fileName: fileNameFrom(disposition) };
+  }
+
   const text = await response.text();
   let data = null;
   if (text) {
@@ -175,6 +181,12 @@ async function request(
 }
 
 const id = (value) => encodeURIComponent(String(value));
+
+/** The file name from a Content-Disposition header such as `attachment; filename="products-2026-10-17.csv"`. */
+export function fileNameFrom(disposition) {
+  const match = /filename="?([^";]+)"?/i.exec(disposition || "");
+  return match ? match[1] : "export.csv";
+}
 
 /** A random key for the Idempotency-Key header. */
 export function newIdempotencyKey() {
@@ -211,8 +223,8 @@ export const productsApi = {
    * One page of products matching q (name, SKU or description), sorted by sort ("name", "quantity,desc", ...).
    * Resolves with { items, total }. page is 0-based.
    */
-  search: ({ q, page = 0, size = LIST_PAGE_SIZE, sort = "name" } = {}) =>
-    request(`/api/products${query({ q, page, size, sort })}`, { withTotal: true }),
+  search: ({ q, categoryId, page = 0, size = LIST_PAGE_SIZE, sort = "name" } = {}) =>
+    request(`/api/products${query({ q, categoryId, page, size, sort })}`, { withTotal: true }),
   lowStock: (threshold = 10) =>
     request(`/api/products/low-stock?threshold=${encodeURIComponent(threshold)}`),
   get: (productId) => request(`/api/products/${id(productId)}`),
@@ -227,6 +239,11 @@ export const productsApi = {
   /** delta > 0 restocks, delta < 0 removes stock. The note is required and ends up in the stock ledger. */
   adjustStock: (productId, delta, note) =>
     request(`/api/products/${id(productId)}/stock`, { method: "PATCH", body: { delta, note } }),
+  /** A made product's bill of materials: [{ componentId, name, sku, quantity, inStock }]. */
+  components: (productId) => request(`/api/products/${id(productId)}/components`),
+  /** components: [{ componentId, quantity }]; replaces the whole list. */
+  setComponents: (productId, components) =>
+    request(`/api/products/${id(productId)}/components`, { method: "PUT", body: { components } }),
   /** Stock movements for one product, newest first. page is 0-based. */
   movements: (productId, { page = 0, size = MOVEMENTS_PAGE_SIZE } = {}) =>
     request(`/api/products/${id(productId)}/movements${query({ page, size })}`),
@@ -242,6 +259,11 @@ export const stockMovementsApi = {
 export const backupApi = {
   /** Writes a backup zip on the backend machine. Resolves with { fileName, path, sizeBytes, createdAt }. */
   create: () => request("/api/backup", { method: "POST", timeoutMs: BACKUP_TIMEOUT_MS }),
+  /** { databaseFile, backupDir, pendingRestore, backups: [{ fileName, sizeBytes, createdAt }] } */
+  status: () => request("/api/backup"),
+  /** Restores the named backup on the next start of the backend. */
+  restore: (fileName) => request("/api/backup/restore", { method: "POST", body: { fileName } }),
+  cancelRestore: () => request("/api/backup/restore", { method: "DELETE" }),
 };
 
 export const ORDER_STATUSES = ["PENDING", "SHIPPED", "DELIVERED", "CANCELLED"];
@@ -334,6 +356,9 @@ export const purchaseOrdersApi = {
   /** lines: [{ lineId, quantity }] */
   receive: (purchaseOrderId, lines, note) =>
     request(`/api/purchase-orders/${id(purchaseOrderId)}/receipts`, { method: "POST", body: { lines, note } }),
+  /** Cancels what is still to come on one line. */
+  cancelRemaining: (purchaseOrderId, lineId) =>
+    request(`/api/purchase-orders/${id(purchaseOrderId)}/lines/${id(lineId)}/cancel-remaining`, { method: "POST" }),
   remove: (purchaseOrderId) => request(`/api/purchase-orders/${id(purchaseOrderId)}`, { method: "DELETE" }),
 };
 
@@ -360,3 +385,31 @@ export const restockApi = {
   /** Restocks every ready product that isn't already covered. Resolves with one result per product. */
   restockAll: () => request("/api/reorder-list/restock", { method: "POST" }),
 };
+
+// ---------------------------------------------------------------------------
+// Categories, reports and CSV export (v2 Run 3)
+// ---------------------------------------------------------------------------
+
+export const categoriesApi = {
+  /** All categories by name, each with productCount. */
+  list: () => request("/api/categories"),
+  create: (name) => request("/api/categories", { method: "POST", body: { name } }),
+  rename: (categoryId, name, version) =>
+    request(`/api/categories/${id(categoryId)}`, { method: "PUT", body: { name, version } }),
+  remove: (categoryId) => request(`/api/categories/${id(categoryId)}`, { method: "DELETE" }),
+};
+
+/** from and to are "YYYY-MM-DD" dates, both included; leave either out for an open range. */
+export const reportsApi = {
+  stockValue: () => request("/api/reports/stock-value"),
+  movements: ({ from, to } = {}) => request(`/api/reports/movements${query({ from, to })}`),
+  topSellers: ({ from, to, limit = 10 } = {}) => request(`/api/reports/top-sellers${query({ from, to, limit })}`),
+};
+
+export const EXPORTS = ["products", "stock-value", "stock-movements", "top-sellers"];
+
+export const exportApi = {
+  /** Downloads /api/export/{name}.csv. Resolves with { blob, fileName }. */
+  csv: (name, params = {}) => request(`/api/export/${encodeURIComponent(name)}.csv${query(params)}`, { asFile: true }),
+};
+

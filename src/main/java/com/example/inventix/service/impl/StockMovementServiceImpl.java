@@ -6,8 +6,10 @@ import com.example.inventix.model.MovementReason;
 import com.example.inventix.model.StockMovement;
 import com.example.inventix.repository.ProductRepository;
 import com.example.inventix.repository.StockMovementRepository;
+import com.example.inventix.service.DateRange;
 import com.example.inventix.service.StockMovementService;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -38,6 +40,19 @@ public class StockMovementServiceImpl implements StockMovementService {
         }
         // The query sorts newest first itself, so the page request carries no sort.
         return stockMovementRepository.search(productId, reason, PageRequest.of(page, size));
+    }
+
+    @Override
+    public Page<StockMovement> searchMovements(Long productId, MovementReason reason, DateRange range,
+                                               int page, int size) {
+        if (page < 0) {
+            throw new BadRequestException("page must be 0 or greater");
+        }
+        if (size < 1 || size > MAX_PAGE_SIZE) {
+            throw new BadRequestException("size must be between 1 and " + MAX_PAGE_SIZE);
+        }
+        return stockMovementRepository.searchInRange(productId, reason, range.start(), range.endExclusive(),
+                PageRequest.of(page, size));
     }
 
     @Override

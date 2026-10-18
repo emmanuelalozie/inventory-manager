@@ -10,8 +10,10 @@ import {
   formatDelta,
   formatFileSize,
   countLabel,
+  defaultReportRange,
   describeRestockResults,
   hasMorePages,
+  isoDate,
   movementReference,
   productRequestBody,
   reasonLabel,
@@ -119,7 +121,7 @@ test("describeBackup copes with a partial response", () => {
 test("productRequestBody never sends quantity when editing", () => {
   const values = { name: "Keyboard", sku: "KB-002", description: "", price: 49.99, quantity: 7 };
 
-  const sourcing = { source: "BUY", supplierId: null, reorderPoint: null, reorderQuantity: null };
+  const sourcing = { source: "BUY", supplierId: null, reorderPoint: null, reorderQuantity: null, categoryId: null, unitCost: null };
   const created = productRequestBody(values, { editing: false });
   assert.deepEqual(created, { name: "Keyboard", sku: "KB-002", description: null, price: 49.99, ...sourcing, quantity: 7 });
 
@@ -165,3 +167,9 @@ test("describeRestockResults counts what was added and lists every product", () 
   assert.deepEqual(summary.lines, ["BOLT: Added 50 to draft purchase order #4", "NUT: no supplier set"]);
   assert.equal(describeRestockResults([]).title, "Nothing new to restock");
 });
+
+test("isoDate uses local time, and the default report range is this month so far", () => {
+  assert.equal(isoDate(new Date(2026, 0, 5)), "2026-01-05");
+  assert.deepEqual(defaultReportRange(new Date(2026, 9, 17, 23, 30)), { from: "2026-10-01", to: "2026-10-17" });
+});
+

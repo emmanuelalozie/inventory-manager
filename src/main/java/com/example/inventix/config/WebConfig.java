@@ -40,7 +40,7 @@ public class WebConfig implements WebMvcConfigurer {
                 .allowedOrigins(allowedOrigins)
                 .allowedMethods(ALLOWED_METHODS)
                 .allowedHeaders("*")
-                .exposedHeaders("Location", TOTAL_COUNT_HEADER)
+                .exposedHeaders("Location", TOTAL_COUNT_HEADER, "Content-Disposition")
                 .maxAge(3600);
     }
 }

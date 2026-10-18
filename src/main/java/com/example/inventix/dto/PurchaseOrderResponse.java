@@ -33,6 +33,7 @@ public record PurchaseOrderResponse(
             String productSku,
             int quantityOrdered,
             int quantityReceived,
+            int quantityCancelled,
             int quantityRemaining,
             BigDecimal unitCost,
             BigDecimal lineTotal) {
@@ -40,7 +41,8 @@ public record PurchaseOrderResponse(
         static Line from(PurchaseOrderLine line) {
             Product product = line.getProduct();
             return new Line(line.getId(), product.getId(), product.getName(), product.getSku(),
-                    line.getQuantityOrdered(), line.getQuantityReceived(), line.getQuantityRemaining(),
+                    line.getQuantityOrdered(), line.getQuantityReceived(), line.getQuantityCancelled(),
+                    line.getQuantityRemaining(),
                     line.getUnitCost(), line.getLineTotal());
         }
     }

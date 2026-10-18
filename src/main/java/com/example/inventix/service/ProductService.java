@@ -33,7 +33,12 @@ public interface ProductService {
      *
      * @throws com.example.inventix.exception.BadRequestException for an invalid page, size or sort
      */
-    Page<Product> searchProducts(String query, Integer page, Integer size, String sort);
+    default Page<Product> searchProducts(String query, Integer page, Integer size, String sort) {
+        return searchProducts(query, null, page, size, sort);
+    }
+
+    /** Like {@link #searchProducts(String, Integer, Integer, String)}, optionally limited to one category. */
+    Page<Product> searchProducts(String query, Long categoryId, Integer page, Integer size, String sort);
 
     /**
      * The only way to change a product's stock: changes it by {@code delta} (positive to add, negative to remove)

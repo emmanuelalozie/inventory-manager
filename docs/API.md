@@ -10,13 +10,14 @@ This is the contract between the Inventix backend and the desktop UI.
 - **Content type:** every request body and response body is JSON (`Content-Type: application/json`).
 - **Responses are DTOs.** No endpoint returns or accepts a JPA entity. The shapes below are the full response
   bodies.
-- **Database:** H2 file database `jdbc:h2:file:./data/inventix`, kept between restarts. The schema is managed by
+- **Database:** H2 file database in the per-user Inventix folder (see the README, "Data and backups"), kept between
+  restarts. The schema is managed by
   Flyway. Five sample products are added on the first start only, when there are no products (turn this off with
   `inventix.seed-data=false`).
 - **OpenAPI:** Swagger UI at `http://localhost:8080/swagger-ui.html`, the generated document at
   `http://localhost:8080/v3/api-docs`. This file remains the reference for the rules behind each endpoint.
-- **H2 console:** `http://localhost:8080/h2-console` (JDBC URL `jdbc:h2:file:./data/inventix`, user `sa`, no
-  password).
+- **H2 console:** `http://localhost:8080/h2-console` (JDBC URL: the `Database:` path from the backend's log without
+  `.mv.db`, user `sa`, no password).
 
 ## CORS
 
@@ -61,6 +62,8 @@ If the Tauri app sets `app.security.csp`, its `connect-src` must include `http:/
   "supplierId": 2,
   "reorderPoint": 20,
   "reorderQuantity": 100,
+  "categoryId": 1,
+  "unitCost": 9.50,
   "createdAt": "2026-10-04T10:15:30.123456",
   "updatedAt": null,
   "version": 0
@@ -68,7 +71,7 @@ If the Tauri app sets `app.security.csp`, its `connect-src` must include `http:/
 ```
 
 Requests to `POST` and `PUT /api/products` use `ProductRequest`: `name`, `sku`, `description`, `price`,
-`quantity`, `source`, `supplierId`, `reorderPoint`, `reorderQuantity` and `version`. Any other field (`id`, `createdAt`, `updatedAt`, …) is ignored.
+`quantity`, `source`, `supplierId`, `reorderPoint`, `reorderQuantity`, `categoryId`, `unitCost` and `version`. Any other field (`id`, `createdAt`, `updatedAt`, …) is ignored.
 
 | Field | Type | Rules |
 |---|---|---|
@@ -82,11 +85,13 @@ Requests to `POST` and `PUT /api/products` use `ProductRequest`: `name`, `sku`, 
 | `supplierId` | number or null | The supplier a `BUY` product is ordered from. Must be an existing supplier (**400** otherwise), and must be left out for `MAKE` products (**400**). |
 | `reorderPoint` | integer or null | >= 0. The product appears on the [reorder list](#get-apireorder-list) when `quantity <= reorderPoint`. |
 | `reorderQuantity` | integer or null | > 0. How many Restock orders or plans to make. |
+| `categoryId` | number or null | An existing [category](#categories) (**400** otherwise) |
+| `unitCost` | number or null | >= 0, at most 2 decimals. What one unit costs to buy or make (not the selling price). Receiving a purchase order line that has a `unitCost` sets the product's `unitCost` to it (last purchase cost). |
 | `createdAt`, `updatedAt` | string | Read-only, set by the server |
 | `version` | integer | Optimistic-lock counter, set by the server. Starts at `0` and goes up on every change (including stock changes from orders). Ignored on `POST`. Optional on `PUT`: if sent, it must match the stored value or the call fails with **409**. |
 
-`PUT` replaces `source`, `supplierId`, `reorderPoint` and `reorderQuantity` like the other fields, so leaving them
-out clears them (and `source` falls back to `BUY`).
+`PUT` replaces `source`, `supplierId`, `reorderPoint`, `reorderQuantity`, `categoryId` and `unitCost` like the other
+fields, so leaving them out clears them (and `source` falls back to `BUY`).
 
 ### Order (`OrderResponse`)
 
@@ -185,7 +190,7 @@ changed or deleted through the API.
 | `note` | string or null | Free text, max 500 characters. Always set for `ADJUSTMENT`. Order movements get a generated note, e.g. `"Order #5 cancelled"`. |
 | `orderId` | number or null | The order that caused the change. Kept after a `PENDING` order is deleted, so it can point to an order that no longer exists. |
 | `purchaseOrderId` | number or null | The purchase order a `RECEIPT` was booked on |
-| `productionRunId` | number or null | The production run a `PRODUCTION` movement came from |
+| `productionRunId` | number or null | The production run a `PRODUCTION` or `CONSUMPTION` movement came from |
 | `locationId` | number or null | Reserved for multiple locations. Always `null` for now. |
 | `createdAt` | string | When the change was made (local date-time, no zone) |
 
@@ -197,6 +202,7 @@ changed or deleted through the API.
 | `CANCEL` | An item is removed or its quantity lowered, an order is replaced with `PUT`, cancelled, or deleted while `PENDING` |
 | `RECEIPT` | Stock received on a purchase order (`POST /api/purchase-orders/{id}/receipts`) |
 | `PRODUCTION` | A production run is completed (`PATCH /api/production-runs/{id}/status`) |
+| `CONSUMPTION` | Components used up by a completed production run (`productionRunId` set) |
 | `ADJUSTMENT` | `PATCH /api/products/{id}/stock` (note required), and the starting stock of a new product (note `"Initial stock"`) |
 
 ### Backup (`BackupResponse`)
@@ -281,7 +287,7 @@ For nested fields, `field` uses paths like `items[0].quantity`.
 
 | Method | Path | Success | Description |
 |---|---|---|---|
-| GET | `/api/products` | 200 | List products (optional `?q=&page=&size=&sort=`) |
+| GET | `/api/products` | 200 | List products (optional `?q=&categoryId=&page=&size=&sort=`) |
 | GET | `/api/products/low-stock?threshold=10` | 200 | List products with `quantity <= threshold` |
 | GET | `/api/products/{id}` | 200 | Get one product |
 | POST | `/api/products` | 201 | Create a product |
@@ -289,7 +295,7 @@ For nested fields, `field` uses paths like `items[0].quantity`.
 | PATCH | `/api/products/{id}/stock` | 200 | Add to or remove from stock, with a required note |
 | DELETE | `/api/products/{id}` | 204 | Delete a product and its movements |
 | GET | `/api/products/{id}/movements` | 200 | A product's stock movements, newest first |
-| GET | `/api/stock-movements` | 200 | All stock movements, newest first (optional `?productId=&reason=`) |
+| GET | `/api/stock-movements` | 200 | All stock movements, newest first (optional `?productId=&reason=&from=&to=`) |
 | GET | `/api/orders` | 200 | List orders, newest first (optional `?status=&page=&size=`) |
 | GET | `/api/orders/{id}` | 200 | Get one order with its items |
 | POST | `/api/orders` | 201 | Create an order, optionally with items |
@@ -301,6 +307,9 @@ For nested fields, `field` uses paths like `items[0].quantity`.
 | PUT | `/api/orders/{orderId}/items/{itemId}` | 200 | Change an item's quantity |
 | DELETE | `/api/orders/{orderId}/items/{itemId}` | 204 | Remove an item from a `PENDING` order |
 | POST | `/api/backup` | 201 | Write a backup zip of the database |
+| GET | `/api/backup` | 200 | Data and backup folders, backups, pending restore |
+| POST | `/api/backup/restore` | 200 | Restore a backup on the next start |
+| DELETE | `/api/backup/restore` | 200 | Cancel a pending restore |
 | GET | `/api/suppliers` | 200 | List suppliers by name |
 | GET | `/api/suppliers/{id}` | 200 | Get one supplier |
 | POST | `/api/suppliers` | 201 | Create a supplier |
@@ -312,16 +321,27 @@ For nested fields, `field` uses paths like `items[0].quantity`.
 | PUT | `/api/purchase-orders/{id}` | 200 | Replace a `DRAFT`'s supplier, notes and lines |
 | PATCH | `/api/purchase-orders/{id}/status` | 200 | Order, cancel or close a purchase order |
 | POST | `/api/purchase-orders/{id}/receipts` | 200 | Receive stock on some or all lines |
+| POST | `/api/purchase-orders/{id}/lines/{lineId}/cancel-remaining` | 200 | Stop expecting what is still to come on one line |
 | DELETE | `/api/purchase-orders/{id}` | 204 | Delete a `DRAFT` or `CANCELLED` purchase order |
 | GET | `/api/production-runs` | 200 | List production runs, newest first (optional `?status=&productId=&page=&size=`) |
 | GET | `/api/production-runs/{id}` | 200 | Get one production run |
 | POST | `/api/production-runs` | 201 | Plan a production run |
 | PUT | `/api/production-runs/{id}` | 200 | Change a `PLANNED` run |
-| PATCH | `/api/production-runs/{id}/status` | 200 | Complete (adds stock) or cancel a run |
+| PATCH | `/api/production-runs/{id}/status` | 200 | Complete (uses components, adds stock) or cancel a run |
+| GET | `/api/products/{id}/components` | 200 | A made product's components (bill of materials) |
+| PUT | `/api/products/{id}/components` | 200 | Replace a made product's components |
 | DELETE | `/api/production-runs/{id}` | 204 | Delete a `PLANNED` or `CANCELLED` run |
 | GET | `/api/reorder-list` | 200 | Products at or below their reorder point |
 | POST | `/api/products/{id}/restock` | 200 | Add a product's reorder quantity to a draft purchase order or a planned run |
 | POST | `/api/reorder-list/restock` | 200 | Restock every ready product on the reorder list |
+| GET | `/api/categories` | 200 | List categories with their product counts |
+| POST | `/api/categories` | 201 | Create a category |
+| PUT | `/api/categories/{id}` | 200 | Rename a category |
+| DELETE | `/api/categories/{id}` | 204 | Delete a category that has no products |
+| GET | `/api/reports/stock-value` | 200 | Stock value at price and at cost, per category |
+| GET | `/api/reports/movements` | 200 | Stock changes per reason (optional `?from=&to=`) |
+| GET | `/api/reports/top-sellers` | 200 | Products by units sold (optional `?from=&to=&limit=`) |
+| GET | `/api/export/{products,stock-value,stock-movements,top-sellers}.csv` | 200 | CSV downloads |
 
 ---
 
@@ -480,8 +500,8 @@ Deletes the product and its stock movements.
 
 - **204**: deleted, no body
 - **404**: no product with that id
-- **409**: the product is used by at least one order item (in any order status), a purchase order line or a
-  production run
+- **409**: the product is used by at least one order item (in any order status), a purchase order line, a
+  production run, or another product's components. Its own components list is deleted with it.
 
 ---
 
@@ -498,9 +518,10 @@ page with fewer than `size` rows is the last one.
 - **400**: `page` < 0, `size` outside 1–500, or either isn't an integer
 - **404**: no product with that id
 
-#### `GET /api/stock-movements?productId=&reason=&page=0&size=100`
+#### `GET /api/stock-movements?productId=&reason=&from=&to=&page=0&size=100`
 
-Both filters are optional and can be combined. `reason` is one of `SALE`, `CANCEL`, `RECEIPT`, `PRODUCTION`,
+All filters are optional and can be combined. `from` and `to` are dates (`2026-10-01`), both days included (see
+[Dates in reports](#dates-in-reports)). The `X-Total-Count` header holds the number of matches across all pages. `reason` is one of `SALE`, `CANCEL`, `RECEIPT`, `PRODUCTION`,
 `ADJUSTMENT`. An unknown `productId` returns an empty array, not 404.
 
 - **200**: `StockMovement[]`
@@ -516,7 +537,8 @@ Both filters are optional and can be combined. `reason` is one of `SALE`, `CANCE
 ]
 ```
 
-- **400**: `reason` isn't a valid `MovementReason`, or `page`/`size` is invalid
+- **400**: `reason` isn't a valid `MovementReason`, `page`/`size` is invalid, a date isn't `YYYY-MM-DD`, or `from`
+  is after `to`
 
 ---
 
@@ -527,11 +549,11 @@ Both filters are optional and can be combined. `reason` is one of `SALE`, `CANCE
 Writes a zip copy of the database with H2's `BACKUP TO`. No request body: the server picks the folder and file
 name. It runs while the app is in use; H2 copies the transaction log too, so the zip is consistent.
 
-- **Folder:** `inventix.backup.dir` in `application.properties`, default `./backups` (relative to the folder the
-  backend was started from). It is created if it doesn't exist.
+- **Folder:** `inventix.backup.dir`, default `backups` in the per-user Inventix folder (see the README, "Data and
+  backups"). It is created if it doesn't exist.
 - **File name:** `inventix-backup-<yyyyMMdd-HHmmss>.zip` (local time). A second backup in the same second gets
   `-1`, `-2`, … instead of overwriting the first.
-- **Contents:** `inventix.mv.db`. To restore, see the README ("Backups").
+- **Contents:** `inventix.mv.db`. To restore one, see [`POST /api/backup/restore`](#post-apibackuprestore).
 - Old backups are never deleted by the server.
 
 Responses:
@@ -547,13 +569,44 @@ Responses:
 }
 ```
 
-- **405**: any method other than `POST`
 - **409**: the database is in memory, so there is nothing to back up (`"The database is in memory, so there is
   nothing to back up. Use a file database to enable backups."`)
 - **500**: the folder couldn't be created or the backup command failed. `message` starts with `"Backup failed: "`
   or names the folder.
 
 The desktop app uses a 120-second timeout for this call. Every other call uses 10 seconds.
+
+#### `GET /api/backup`
+
+Where the data lives, the backups (newest first) and any restore waiting for the next start:
+
+```json
+{
+  "databaseFile": "C:\\Users\\me\\AppData\\Local\\Inventix\\data\\inventix.mv.db",
+  "backupDir": "C:\\Users\\me\\AppData\\Local\\Inventix\\backups",
+  "pendingRestore": null,
+  "backups": [{ "fileName": "inventix-backup-20261017-091500.zip", "sizeBytes": 20480, "createdAt": "2026-10-17T09:15:00Z" }]
+}
+```
+
+`databaseFile` is `null` when the database isn't a file managed by Inventix (e.g. the in-memory test database).
+
+#### `POST /api/backup/restore`
+
+`{"fileName": "inventix-backup-20261017-091500.zip"}` schedules that backup to be restored **the next time the
+backend starts**; nothing changes until then. On that start, before the database is opened, the backup's
+`inventix.mv.db` replaces the current one, which is kept as `inventix-before-restore-<yyyyMMdd-HHmmss>.mv.db` in the
+data folder. Flyway then applies any newer migrations. If the backup can't be used, the current database is kept
+and the request is dropped (the log says why).
+
+- **200**: the same body as `GET /api/backup`, with `pendingRestore` set
+- **400**: `fileName` is missing, isn't a plain `.zip` file name in the backup folder, doesn't exist, or holds no
+  database
+- **409**: the database isn't a file managed by Inventix
+
+#### `DELETE /api/backup/restore`
+
+Cancels a scheduled restore. **200** with the backup status.
 
 ---
 
@@ -761,6 +814,7 @@ Statuses: `DRAFT` → `ORDERED` → `PARTIALLY_RECEIVED` → `RECEIVED`.
 | `DRAFT` or `ORDERED` → `CANCELLED` | `PATCH .../status`. Not possible once anything was received. |
 | `ORDERED` → `PARTIALLY_RECEIVED` → `RECEIVED` | Automatic when receiving: `RECEIVED` once every line is in full |
 | `PARTIALLY_RECEIVED` → `CLOSED` | `PATCH .../status`, when the rest won't arrive |
+| `ORDERED` / `PARTIALLY_RECEIVED` → `CLOSED` or `CANCELLED` | Automatic once [cancelling the rest of lines](#post-apipurchase-ordersidlineslineidcancel-remaining) leaves nothing to come: `CLOSED` if anything arrived, `CANCELLED` if nothing did. Receiving the last outstanding units of an order with cancelled quantities also ends in `CLOSED`, not `RECEIVED`. |
 
 `RECEIVED`, `CLOSED` and `CANCELLED` are final. Other changes return **409**.
 
@@ -778,13 +832,14 @@ Statuses: `DRAFT` → `ORDERED` → `PARTIALLY_RECEIVED` → `RECEIVED`.
   "version": 3,
   "lines": [
     { "id": 7, "productId": 1, "productName": "Wireless Mouse", "productSku": "WM-001",
-      "quantityOrdered": 100, "quantityReceived": 60, "quantityRemaining": 40,
+      "quantityOrdered": 100, "quantityReceived": 60, "quantityCancelled": 0, "quantityRemaining": 40,
       "unitCost": 0.25, "lineTotal": 25.00 }
   ]
 }
 ```
 
-`unitCost` is what the supplier charges and is optional; `totalCost` adds up the lines that have one.
+`unitCost` is what the supplier charges and is optional. `quantityRemaining` is ordered − received − cancelled.
+`lineTotal` is `unitCost` × (ordered − cancelled), and `totalCost` adds up the lines that have a cost.
 
 #### `POST /api/purchase-orders` and `PUT /api/purchase-orders/{id}`
 
@@ -816,14 +871,23 @@ order #1: Delivery note 881"`). Everything is checked first, so one bad line boo
 - **409**: the purchase order can't receive (wrong status), or a quantity is more than the line's
   `quantityRemaining`. Two receipts at the same moment can also get **409**; reload and try again.
 
+#### `POST /api/purchase-orders/{id}/lines/{lineId}/cancel-remaining`
+
+Stops expecting what is still to come on one line of an `ORDERED` or `PARTIALLY_RECEIVED` purchase order (it moves
+from `quantityRemaining` to `quantityCancelled`). What already arrived stays. Drafts are edited instead.
+
+- **200**: the updated purchase order (its status settles as described above when nothing is left to come)
+- **404**: the line isn't on this purchase order
+- **409**: the purchase order isn't `ORDERED` or `PARTIALLY_RECEIVED`, or the line has nothing left to come
+
 #### `DELETE /api/purchase-orders/{id}`
 
 Only `DRAFT` and `CANCELLED` purchase orders can be deleted (**204**); others return **409**.
 
 ### Production runs
 
-Statuses: `PLANNED` → `COMPLETED` or `CANCELLED` (both final). A run only adds a finished product; it doesn't use
-up other products.
+Statuses: `PLANNED` → `COMPLETED` or `CANCELLED` (both final). When the product has
+[components](#bills-of-materials), completing a run uses them up.
 
 ```json
 { "id": 3, "productId": 6, "productName": "Workbench", "productSku": "WB-01", "quantity": 5, "status": "PLANNED",
@@ -833,10 +897,24 @@ up other products.
 - `POST /api/production-runs` `{"productId": 6, "quantity": 5, "notes": "Oak batch"}`: **201**, status `PLANNED`.
   Stock doesn't change yet.
 - `PUT /api/production-runs/{id}` (same body plus optional `version`): **200**; **409** unless `PLANNED`
-- `PATCH /api/production-runs/{id}/status` `{"status": "COMPLETED"}`: adds `quantity` to stock with a `PRODUCTION`
-  movement (`productionRunId` set) and sets `completedAt`. `{"status": "CANCELLED"}` changes nothing else. Any
-  other change is **409**.
+- `PATCH /api/production-runs/{id}/status` `{"status": "COMPLETED"}`: takes component quantity × run quantity of
+  each component out of stock (`CONSUMPTION` movements, note `"Used in production run #3"`), then adds `quantity` to
+  stock with a `PRODUCTION` movement, and sets `completedAt`. If any component is short, nothing changes and the
+  call returns **409** naming the product. `{"status": "CANCELLED"}` changes nothing else. Any other change is
+  **409**.
 - `DELETE /api/production-runs/{id}`: **204** for `PLANNED` or `CANCELLED`; **409** for `COMPLETED` (kept as a record)
+
+### Bills of materials
+
+What one unit of a made product (`source: "MAKE"`) uses. Completing a production run takes these out of stock.
+
+- `GET /api/products/{id}/components`: `[{ "componentId": 3, "name": "USB-C Hub", "sku": "HUB-003", "quantity": 2,
+  "inStock": 8 }]`, by name. **404** for an unknown product.
+- `PUT /api/products/{id}/components` `{"components": [{"componentId": 3, "quantity": 2}]}` replaces the whole list
+  (`[]` removes it) and returns the new list. **400** if the product isn't `MAKE`, a component doesn't exist, is the
+  product itself, appears twice, or would make a loop (the component is made, directly or indirectly, from this
+  product).
+- While a product has components, `PUT /api/products/{id}` can't change its `source` to `BUY` (**400**).
 
 ### Restock
 
@@ -881,6 +959,64 @@ product was added (false when it was already there). Works whatever the current 
 
 Restocks every product on the reorder list that has no `problem` and isn't `covered`. Returns one result per
 product on the list; the others have `action: "SKIPPED"` and the reason in `message`.
+
+### Categories
+
+`GET /api/categories` returns `[{ "id": 1, "name": "Cables", "productCount": 3, "version": 0 }]`, by name.
+
+- `POST /api/categories` `{"name": "Cables"}` (required, max 100 characters, unique ignoring case): **201** with
+  `Location`; **409** if the name is taken
+- `PUT /api/categories/{id}` `{"name": "Cables & adapters", "version": 0}`: **200**; **404**; **409** if the name is
+  taken or `version` is stale
+- `DELETE /api/categories/{id}`: **204**; **404**; **409** while products are in it
+
+### Reports
+
+#### Dates in reports
+
+`from` and `to` are dates in `YYYY-MM-DD` form and both days are included: `from=2026-10-01&to=2026-10-31` covers
+every timestamp from 1 October 00:00 up to (not including) 1 November 00:00. Leave either out for an open range.
+Timestamps are the backend machine's local time. `from` after `to` returns **400**.
+
+#### `GET /api/reports/stock-value`
+
+```json
+{
+  "total": { "products": 5, "units": 163, "valueAtPrice": 7412.43, "valueAtCost": 1111.50, "productsWithoutCost": 4 },
+  "categories": [
+    { "categoryId": 1, "categoryName": "Peripherals", "products": 1, "units": 117, "valueAtPrice": 2923.83,
+      "valueAtCost": 1111.50, "productsWithoutCost": 0 },
+    { "categoryId": null, "categoryName": null, "products": 4, "units": 46, "valueAtPrice": 4488.60,
+      "valueAtCost": 0.00, "productsWithoutCost": 4 }
+  ]
+}
+```
+
+Values are `quantity × price` and `quantity × unitCost`. Products without a `unitCost` count as 0 at cost;
+`productsWithoutCost` says how many, so the cost value can be read as a lower bound. Products without a category
+are grouped last with `categoryId: null`.
+
+#### `GET /api/reports/movements?from=&to=`
+
+Per reason with any movements in the range: `[{ "reason": "SALE", "movements": 2, "unitsIn": 0, "unitsOut": 4 }]`.
+
+#### `GET /api/reports/top-sellers?from=&to=&limit=10`
+
+Products by units on `SHIPPED` and `DELIVERED` orders created in the range, most first (revenue breaks ties):
+`[{ "productId": 1, "name": "Wireless Mouse", "sku": "WM-001", "unitsSold": 3, "revenue": 74.97 }]`. Revenue is
+the item subtotals (the price captured when each item was added). `limit` is 1–100 (**400** otherwise).
+
+### CSV export
+
+`GET /api/export/products.csv`, `/api/export/stock-value.csv`, `/api/export/stock-movements.csv?productId=&reason=&from=&to=`
+and `/api/export/top-sellers.csv?from=&to=&limit=` return `text/csv;charset=UTF-8` with
+`Content-Disposition: attachment; filename="products-2026-10-17.csv"` (exposed through CORS).
+
+- UTF-8 with a byte order mark, so Excel shows non-English text correctly; comma separated, CRLF line ends,
+  fields quoted when they contain a comma, quote or line break.
+- Text that a spreadsheet could run as a formula (starting with `=`, `+`, `-`, `@`, tab or carriage return) is
+  written with a leading `'`. Numbers are written as plain numbers.
+- The stock movements export includes every match (it reads the ledger in pages of 500).
 
 ---
 

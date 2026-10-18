@@ -194,10 +194,40 @@ async function openRunDialog(run) {
 }
 
 async function completeRun(run, button) {
-  const ok = await confirmDialog({
-    title: "Complete production run",
-    message: `Add ${run.quantity} × ${run.productName} to stock and mark run #${run.id} as completed?`,
-    confirmLabel: "Complete",
+  let components;
+  try {
+    components = await productsApi.components(run.productId);
+  } catch (error) {
+    showError(error, "Could not load the components");
+    return;
+  }
+  const short = components.filter((c) => c.quantity * run.quantity > c.inStock);
+  const rows = components
+    .map((c) => {
+      const needed = c.quantity * run.quantity;
+      return `<tr${needed > c.inStock ? ' class="row-short"' : ""}>
+        <td><div class="cell-title">${escapeHtml(c.name)}</div><div class="cell-sub">${escapeHtml(c.sku)}</div></td>
+        <td class="num">${escapeHtml(formatNumber(needed))}</td>
+        <td class="num">${escapeHtml(formatNumber(c.inStock))}</td>
+      </tr>`;
+    })
+    .join("");
+  const ok = await openDialog({
+    title: `Complete production run #${run.id}`,
+    submitLabel: "Complete",
+    body: `
+      <p>Add ${escapeHtml(formatNumber(run.quantity))} × ${escapeHtml(run.productName)} to stock.</p>
+      ${
+        components.length
+          ? `<p class="muted">This uses up:</p>
+             <div class="table-wrap"><table class="table table-compact">
+               <thead><tr><th>Component</th><th class="num">Needed</th><th class="num">In stock</th></tr></thead>
+               <tbody>${rows}</tbody>
+             </table></div>
+             ${short.length ? `<p class="form-error">Not enough stock of ${escapeHtml(short.map((c) => c.name).join(", "))}. Nothing will change.</p>` : ""}`
+          : `<p class="muted">This product has no components, so no other stock changes.</p>`
+      }`,
+    onSubmit: () => true,
   });
   if (!ok) return;
   button.disabled = true;

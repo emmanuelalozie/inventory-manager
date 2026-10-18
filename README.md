@@ -4,9 +4,10 @@
 REST API for products, stock levels and orders, and a lightweight desktop app (Tauri 2 with plain HTML, CSS and
 JavaScript) sits on top of it.
 
-The project is at **v2 Run 2**: data is kept in an H2 file database with Flyway migrations, the database can be
+The project is at **v2 Run 3**: data is kept in an H2 file database with Flyway migrations, the database can be
 backed up from the desktop app, every stock change is recorded in a stock movement ledger, and stock is
-replenished through suppliers and purchase orders or in-house production runs. Inventix is built
+replenished through suppliers and purchase orders or in-house production runs. Products have categories and a
+unit cost, and there are reports with CSV export. Inventix is built
 for one user on one machine: the API only accepts local connections and has no login. See
 [Known limitations and roadmap](#known-limitations-and-roadmap) and the full [review](docs/REVIEW.md).
 
@@ -27,10 +28,18 @@ for one user on one machine: the API only accepts local connections and has no l
   arrives in as many parts as needed, close them when the rest won't come, or cancel them. Every receipt adds stock
   with a `RECEIPT` movement that points back to the purchase order.
 - Production runs: plan a quantity of a made product, then complete it to add the stock (`PRODUCTION` movement), or
-  cancel it.
+  cancel it. Made products can have components (a bill of materials) that a completed run uses up
+  (`CONSUMPTION` movements); if one is short, nothing changes.
+- Cancel what is still to come on a single purchase order line, and print a purchase order for the supplier.
 - Reorder list and **Restock**: products at or below their reorder point, with what is already on order. Restock
   adds the reorder quantity to the supplier's draft purchase order or plans a production run, for you to review;
   **Restock all** does that for every product that needs it.
+
+**Reports**
+- Categories for products, and a unit cost per product (updated from purchase-order receipts).
+- Stock value at selling price and at cost, per category.
+- Stock changes per reason, and top sellers from shipped and delivered orders, for any range of days.
+- CSV downloads of products, stock value, stock changes and top sellers, ready for Excel.
 
 **Data**
 - Data is kept between restarts in an H2 file database. The schema is managed by Flyway migrations.
@@ -65,9 +74,9 @@ for one user on one machine: the API only accepts local connections and has no l
 | Area | Technology |
 |---|---|
 | Language | Java 17 |
-| Framework | Spring Boot 3.5.16 (Web, Data JPA, Validation); H2 pinned to 2.2.224 |
-| Database | H2 file database (`./data/inventix`), schema managed by Flyway; in-memory H2 for tests |
-| Build | Gradle 8.10.2 via the included wrapper |
+| Framework | Spring Boot 4.1.1 (Spring Framework 7, Hibernate 7, Jackson 3); H2 pinned to 2.2.224 |
+| Database | H2 file database in a per-user folder, schema managed by Flyway; in-memory H2 for tests |
+| Build | Gradle 9.8.1 via the included wrapper |
 | Utilities | Lombok |
 | Tests | JUnit 5, Mockito, AssertJ, MockMvc (`spring-boot-starter-test`) |
 | Desktop UI | Tauri 2, vanilla HTML / CSS / JavaScript (no framework or bundler) |
@@ -155,11 +164,11 @@ Settings live in `src/main/resources/application.properties`:
 | Setting | Value |
 |---|---|
 | Server address and port | `127.0.0.1:8080` (`server.address`, `server.port`) |
-| JDBC URL | `jdbc:h2:file:./data/inventix` (user `sa`, empty password) |
+| JDBC URL | `jdbc:h2:file:${inventix.data.dir}/inventix` (user `sa`, empty password); see [Data and backups](#data-and-backups) |
 | Schema | Flyway migrations in `src/main/resources/db/migration`; Hibernate only validates (`ddl-auto=validate`) |
 | Open-in-view | `spring.jpa.open-in-view=false` |
 | Sample data | `inventix.seed-data=true` adds five products on the first start, when there are no products; set it to `false` to turn this off |
-| Backup folder | `inventix.backup.dir=./backups` |
+| Backup folder | `inventix.backup.dir=${inventix.home}/backups` |
 
 Tests use `src/test/resources/application.properties` instead: an in-memory H2 database with the same Flyway
 migrations, so running the tests never touches `data/`.
@@ -168,7 +177,8 @@ migrations, so running the tests never touches `data/`.
 
 While the backend is running, open **`http://localhost:8080/h2-console`** and sign in with:
 
-- **JDBC URL:** `jdbc:h2:file:./data/inventix`
+- **JDBC URL:** the `Database:` path from the backend's log, without `.mv.db`, e.g.
+  `jdbc:h2:file:C:\Users\you\AppData\Local\Inventix\data\inventix`
 - **User name:** `sa`
 - **Password:** leave empty
 
@@ -177,19 +187,32 @@ there by hand unless you know what you're doing: stock changes made in the conso
 
 ## Data and backups
 
-**Where the data lives.** The database is the file **`data\inventix.mv.db`**, relative to the folder the backend
-was started from. With `.\gradlew.bat bootRun` from the repository root, that's `inventory-manager\data\`. If you
-start the backend from another folder, it creates a new, empty database there. `data\` and `backups\` are
-gitignored.
+**Where the data lives.** Inventix keeps its data in a per-user folder, whatever folder the backend is started
+from:
+
+| System | Folder |
+|---|---|
+| Windows | `%LOCALAPPDATA%\Inventix` (e.g. `C:\Users\you\AppData\Local\Inventix`) |
+| macOS | `~/Library/Application Support/Inventix` |
+| Linux | `$XDG_DATA_HOME/inventix`, or `~/.local/share/inventix` |
+
+The database is `data\inventix.mv.db` and backups go to `backups\` inside that folder. The desktop app's Settings
+shows both paths, and the backend logs `Database: ...` on startup. To use another folder, set the environment
+variable `INVENTIX_HOME` (both), or `INVENTIX_DATA_DIR` for the database alone, before starting the backend.
+
+**Coming from an older version.** Older versions kept the database in `data\` under the folder the backend was
+started from (usually `inventory-manager\data\`). On the first start of this version from that folder, if the new
+folder has no database yet, the old `inventix.mv.db` is **copied** there and the log says so. The old file is left
+where it was; delete it once you have checked your data. Old backups in `inventory-manager\backups\` are not moved:
+copy any you want to keep into the new `backups\` folder.
 
 **Sample data.** On the first start (no products in the database) five sample products are added, with their
 starting stock recorded in the ledger. Later starts leave the data alone. To start from scratch, stop the backend
-and delete `data\`.
+and delete the `data\` folder.
 
-**One process at a time.** Only one process may open the database. While the backend runs, H2 keeps a
-`data\inventix.lock.db` file, and a second backend or an outside tool opening the same file fails with "database may
-be already in use". Use the built-in H2 console instead, and don't copy `inventix.mv.db` while the backend is
-running; use a backup.
+**One process at a time.** Only one process may open the database. A second backend or an outside tool opening the
+same file fails with "database may be already in use". Use the built-in H2 console instead, and don't copy
+`inventix.mv.db` while the backend is running; use a backup.
 
 **Making a backup.** Click **Back up now** in the desktop app's Settings, or call the API:
 
@@ -197,22 +220,15 @@ running; use a backup.
 Invoke-RestMethod -Method Post http://localhost:8080/api/backup
 ```
 
-The backend writes `backups\inventix-backup-<yyyyMMdd-HHmmss>.zip` (relative to the start folder, set by
-`inventix.backup.dir`) and returns the file name, full path and size. It is safe to run while the app is in use.
-Old backups are never deleted automatically, and they sit on the same disk as the database, so copy important ones
-somewhere else.
+The backend writes `backups\inventix-backup-<yyyyMMdd-HHmmss>.zip` and returns the file name, full path and size.
+It is safe to run while the app is in use. Old backups are never deleted automatically, and they sit on the same
+disk as the database, so copy important ones to another drive or a cloud folder.
 
-**Restoring a backup** (manual):
-
-1. Stop the backend (Ctrl+C in its terminal) and close the desktop app.
-2. Move the current `data\inventix.mv.db` somewhere safe, in case you need it again.
-3. Unzip the backup into `data\`, so that `data\inventix.mv.db` is the file from the zip:
-
-   ```powershell
-   Expand-Archive backups\inventix-backup-20261004-153000.zip -DestinationPath data -Force
-   ```
-
-4. Start the backend again. Flyway applies any newer migrations to the restored database.
+**Restoring a backup.** In Settings, click **Restore…** next to a backup, then stop the backend and start it again.
+Before the database is opened, the backend puts the backup's database in place and keeps the one it replaces as
+`data\inventix-before-restore-<timestamp>.mv.db`, so nothing is lost. Flyway then applies any newer migrations.
+Until the restart you can still **Cancel restore**. The same works through the API:
+`POST /api/backup/restore` with `{"fileName": "..."}`, and `DELETE /api/backup/restore` to cancel.
 
 A backup is an H2 database file, so a newer H2 version may not be able to open it. Before upgrading Spring Boot
 or H2, read
@@ -285,17 +301,16 @@ The [review](docs/REVIEW.md) has the full list with recommendations. The main po
 **Known limitations**
 - **No authentication, by design.** The API binds to `127.0.0.1`, but any program or user account on the same
   machine can use it and the H2 console.
-- **Restoring a backup is manual** (see [Data and backups](#data-and-backups)), and old backups are never cleaned up.
-- **The database path depends on the start folder.** Starting the backend somewhere else creates a new database.
+- **Old backups are never cleaned up**, and backups stay on the same disk until you copy them elsewhere.
 - **H2 file format.** A future Spring Boot or H2 upgrade may not open existing database files or backups without
   an export and re-import.
-- **Spring Boot 3.5.x is out of open-source support** (since June 2026); 4.x is the next step.
+- **H2 is pinned to 2.2.224** so existing database files and backups keep opening; moving to a newer H2 needs an
+  export and re-import (see O-13 in the review).
 - **Tauri icons are not checked in** and must be generated before the first desktop build.
 
 **Roadmap**
-1. **v2 Run 3:** categories, unit cost, reports and CSV export.
-2. Plan the migration to Spring Boot 4.x, and the H2 2.3 upgrade (export and re-import, see O-13).
-3. Later: ship backend and desktop as one app, multi-location stock, demand forecasting.
+1. The H2 upgrade (export and re-import, see O-13).
+2. Later: ship backend and desktop as one app, multi-location stock, demand forecasting.
 
 ## Contributing
 

@@ -152,11 +152,35 @@ public class PurchaseOrderServiceImpl implements PurchaseOrderService {
             productService.changeStock(line.getProduct().getId(), received.quantity(), MovementReason.RECEIPT, note,
                     StockReference.purchaseOrder(id));
             line.setQuantityReceived(line.getQuantityReceived() + received.quantity());
+            if (line.getUnitCost() != null) {
+                line.getProduct().setUnitCost(line.getUnitCost()); // last purchase cost
+            }
         }
 
-        order.setStatus(order.isFullyReceived() ? PurchaseOrderStatus.RECEIVED : PurchaseOrderStatus.PARTIALLY_RECEIVED);
+        order.setStatus(order.isSettled() ? order.settledStatus() : PurchaseOrderStatus.PARTIALLY_RECEIVED);
         // Always write the order row, so two receipts at the same time conflict on its version instead of both
         // booking the same outstanding quantity.
+        order.setUpdatedAt(LocalDateTime.now());
+        return purchaseOrderRepository.save(order);
+    }
+
+    @Override
+    public PurchaseOrder cancelRemaining(Long id, Long lineId) {
+        PurchaseOrder order = getPurchaseOrder(id);
+        if (order.getStatus() != PurchaseOrderStatus.ORDERED && order.getStatus() != PurchaseOrderStatus.PARTIALLY_RECEIVED) {
+            throw new ConflictException("Purchase order " + id + " is " + order.getStatus()
+                    + "; lines can only be cancelled on ORDERED or PARTIALLY_RECEIVED purchase orders"
+                    + (order.getStatus() == PurchaseOrderStatus.DRAFT ? " (edit the draft instead)" : ""));
+        }
+        PurchaseOrderLine line = order.getLines().stream().filter(l -> l.getId().equals(lineId)).findFirst()
+                .orElseThrow(() -> new NotFoundException("Line " + lineId + " is not on purchase order " + id));
+        if (line.getQuantityRemaining() == 0) {
+            throw new ConflictException("Line " + lineId + " has nothing left to cancel");
+        }
+        line.setQuantityCancelled(line.getQuantityCancelled() + line.getQuantityRemaining());
+        if (order.isSettled()) {
+            order.setStatus(order.settledStatus());
+        }
         order.setUpdatedAt(LocalDateTime.now());
         return purchaseOrderRepository.save(order);
     }

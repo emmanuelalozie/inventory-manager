@@ -22,6 +22,8 @@ public record ProductResponse(
         Long supplierId,
         Integer reorderPoint,
         Integer reorderQuantity,
+        Long categoryId,
+        BigDecimal unitCost,
         LocalDateTime createdAt,
         LocalDateTime updatedAt,
         Long version) {
@@ -38,6 +40,8 @@ public record ProductResponse(
                 product.getSupplierId(),
                 product.getReorderPoint(),
                 product.getReorderQuantity(),
+                product.getCategoryId(),
+                product.getUnitCost(),
                 product.getCreatedAt(),
                 product.getUpdatedAt(),
                 product.getVersion());

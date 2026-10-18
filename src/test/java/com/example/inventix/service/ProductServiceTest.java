@@ -9,6 +9,7 @@ import com.example.inventix.exception.QuantityChangeNotAllowedException;
 import com.example.inventix.model.MovementReason;
 import com.example.inventix.model.Product;
 import com.example.inventix.model.StockMovement;
+import com.example.inventix.repository.CategoryRepository;
 import com.example.inventix.repository.OrderItemRepository;
 import com.example.inventix.repository.ProductRepository;
 import com.example.inventix.repository.StockMovementRepository;
@@ -44,6 +45,9 @@ class ProductServiceTest {
 
     @Mock
     private SupplierRepository supplierRepository;
+
+    @Mock
+    private CategoryRepository categoryRepository;
 
     @InjectMocks
     private ProductServiceImpl productService;

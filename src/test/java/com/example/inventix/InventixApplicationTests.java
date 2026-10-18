@@ -1,12 +1,12 @@
 package com.example.inventix;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
+import tools.jackson.databind.ObjectMapper;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.hasSize;
@@ -15,6 +15,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -302,4 +303,87 @@ class InventixApplicationTests {
                 .andExpect(jsonPath("$[?(@.sku == 'E2E-NUT')].onOrder").value(100))
                 .andExpect(jsonPath("$[?(@.sku == 'E2E-NUT')].covered").value(true));
     }
+
+    @Test
+    void reportsAndCsvExports_overHttp() throws Exception {
+        int categoryId = postForId("/api/categories", "{\"name\":\"E2E Tools\"}");
+        postForId("/api/products", "{\"name\":\"E2E Hammer, steel\",\"sku\":\"E2E-HAM\",\"price\":12.50,"
+                + "\"quantity\":4,\"categoryId\":" + categoryId + ",\"unitCost\":7.25}");
+
+        mockMvc.perform(get("/api/categories"))
+                .andExpect(jsonPath("$[?(@.name == 'E2E Tools')].productCount").value(1));
+        mockMvc.perform(get("/api/products").param("categoryId", String.valueOf(categoryId)))
+                .andExpect(jsonPath("$", hasSize(1)))
+                .andExpect(jsonPath("$[0].unitCost").value(7.25));
+        mockMvc.perform(get("/api/reports/stock-value"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.categories[?(@.categoryName == 'E2E Tools')].valueAtCost").value(29.0));
+        mockMvc.perform(get("/api/reports/movements").param("from", "2000-01-01"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[?(@.reason == 'ADJUSTMENT')].unitsIn").exists());
+        mockMvc.perform(get("/api/reports/top-sellers").param("limit", "5")).andExpect(status().isOk());
+        mockMvc.perform(get("/api/stock-movements").param("from", "2000-01-01").param("to", "2999-12-31"))
+                .andExpect(status().isOk())
+                .andExpect(header().exists("X-Total-Count"));
+
+        String csv = mockMvc.perform(get("/api/export/products.csv"))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Content-Type", "text/csv;charset=UTF-8"))
+                .andExpect(header().string("Content-Disposition", org.hamcrest.Matchers.startsWith("attachment; filename=\"products-")))
+                .andReturn().getResponse().getContentAsString(java.nio.charset.StandardCharsets.UTF_8);
+        assertThat(csv).startsWith("\uFEFFid,sku,name,category,");
+        assertThat(csv).contains("E2E-HAM,\"E2E Hammer, steel\",E2E Tools,BUY,,12.50,7.25,4,,,50.00,29.00");
+
+        mockMvc.perform(get("/api/export/stock-movements.csv").param("from", "2000-01-01")).andExpect(status().isOk());
+        mockMvc.perform(get("/api/export/stock-value.csv")).andExpect(status().isOk());
+        mockMvc.perform(get("/api/export/top-sellers.csv")).andExpect(status().isOk());
+        mockMvc.perform(delete("/api/categories/{id}", categoryId)).andExpect(status().isConflict());
+    }
+
+    @Test
+    void productionRun_overHttp_isAllOrNothingWhenAComponentIsShort() throws Exception {
+        int tableId = postForId("/api/products", "{\"name\":\"E2E BOM Table\",\"sku\":\"E2E-BOM-TBL\",\"price\":99,"
+                + "\"quantity\":0,\"source\":\"MAKE\"}");
+        int legId = postForId("/api/products", "{\"name\":\"E2E BOM A Leg\",\"sku\":\"E2E-BOM-LEG\",\"price\":1,\"quantity\":100}");
+        int topId = postForId("/api/products", "{\"name\":\"E2E BOM B Top\",\"sku\":\"E2E-BOM-TOP\",\"price\":1,\"quantity\":1}");
+        mockMvc.perform(put("/api/products/{id}/components", tableId).contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"components\":[{\"componentId\":" + legId + ",\"quantity\":4},"
+                                + "{\"componentId\":" + topId + ",\"quantity\":1}]}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].sku").value("E2E-BOM-LEG"))
+                .andExpect(jsonPath("$[0].inStock").value(100));
+        int runId = postForId("/api/production-runs", "{\"productId\":" + tableId + ",\"quantity\":2}");
+
+        // Legs are used up first (by name), then the tops run out: the leg consumption must be undone too.
+        mockMvc.perform(patch("/api/production-runs/{id}/status", runId).contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"status\":\"COMPLETED\"}"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.message").value(org.hamcrest.Matchers.containsString("E2E BOM B Top")));
+
+        mockMvc.perform(get("/api/products/{id}", legId)).andExpect(jsonPath("$.quantity").value(100));
+        mockMvc.perform(get("/api/products/{id}", tableId)).andExpect(jsonPath("$.quantity").value(0));
+        mockMvc.perform(get("/api/production-runs/{id}", runId)).andExpect(jsonPath("$.status").value("PLANNED"));
+    }
+
+    @Test
+    void cancelRemaining_overHttp() throws Exception {
+        int supplierId = postForId("/api/suppliers", "{\"name\":\"E2E Cancel Supplier\"}");
+        int productId = postForId("/api/products", "{\"name\":\"E2E Washer\",\"sku\":\"E2E-WASH\",\"price\":0.05,\"quantity\":0}");
+        String created = mockMvc.perform(post("/api/purchase-orders").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"supplierId\":" + supplierId + ",\"lines\":[{\"productId\":" + productId + ",\"quantity\":10}]}"))
+                .andReturn().getResponse().getContentAsString();
+        int poId = objectMapper.readTree(created).get("id").asInt();
+        int lineId = objectMapper.readTree(created).get("lines").get(0).get("id").asInt();
+        mockMvc.perform(patch("/api/purchase-orders/{id}/status", poId).contentType(MediaType.APPLICATION_JSON)
+                .content("{\"status\":\"ORDERED\"}")).andExpect(status().isOk());
+        mockMvc.perform(post("/api/purchase-orders/{id}/receipts", poId).contentType(MediaType.APPLICATION_JSON)
+                .content("{\"lines\":[{\"lineId\":" + lineId + ",\"quantity\":4}]}")).andExpect(status().isOk());
+
+        mockMvc.perform(post("/api/purchase-orders/{id}/lines/{lineId}/cancel-remaining", poId, lineId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("CLOSED"))
+                .andExpect(jsonPath("$.lines[0].quantityCancelled").value(6))
+                .andExpect(jsonPath("$.lines[0].quantityRemaining").value(0));
+    }
 }
+

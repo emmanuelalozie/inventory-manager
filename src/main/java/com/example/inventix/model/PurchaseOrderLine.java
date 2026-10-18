@@ -36,15 +36,20 @@ public class PurchaseOrderLine {
     @Column(name = "quantity_received", nullable = false)
     private int quantityReceived;
 
+    // Outstanding quantity that was cancelled (it won't arrive). received + cancelled <= ordered.
+    @Column(name = "quantity_cancelled", nullable = false)
+    private int quantityCancelled;
+
     // What the supplier charges per unit, if known. Not the product's selling price.
     @Column(name = "unit_cost", precision = 12, scale = 2)
     private BigDecimal unitCost;
 
     public int getQuantityRemaining() {
-        return quantityOrdered - quantityReceived;
+        return quantityOrdered - quantityReceived - quantityCancelled;
     }
 
+    /** Cost of what was ordered and not cancelled. */
     public BigDecimal getLineTotal() {
-        return unitCost == null ? null : unitCost.multiply(BigDecimal.valueOf(quantityOrdered));
+        return unitCost == null ? null : unitCost.multiply(BigDecimal.valueOf(quantityOrdered - quantityCancelled));
     }
 }

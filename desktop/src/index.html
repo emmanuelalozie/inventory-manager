@@ -22,6 +22,7 @@
           <a class="nav-link" href="#/purchase-orders" data-view="purchase-orders">Purchase orders</a>
           <a class="nav-link" href="#/production" data-view="production">Production</a>
           <a class="nav-link" href="#/suppliers" data-view="suppliers">Suppliers</a>
+          <a class="nav-link" href="#/reports" data-view="reports">Reports</a>
           <a class="nav-link" href="#/settings" data-view="settings">Settings</a>
         </nav>
         <div class="connection" id="connection-status">
@@ -93,6 +94,8 @@
                 placeholder="Search name, SKU or description"
                 aria-label="Search products"
               />
+              <select id="products-category-filter" aria-label="Filter by category"><option value="">All categories</option></select>
+              <button type="button" class="button" id="products-categories">Categories</button>
               <button type="button" class="button" id="products-refresh">Refresh</button>
               <button type="button" class="button button-primary" id="products-new">New product</button>
             </div>
@@ -156,6 +159,55 @@
           </div>
         </section>
 
+        <!-- Reports -->
+        <section class="view" data-view="reports" id="view-reports" hidden>
+          <div class="view-header">
+            <div>
+              <h1>Reports</h1>
+              <p class="muted">Stock changes and top sellers: <span id="reports-range-label"></span></p>
+            </div>
+            <form class="actions report-range" id="reports-range" novalidate>
+              <label class="field">
+                <span class="field-label">From</span>
+                <input type="date" name="from">
+              </label>
+              <label class="field">
+                <span class="field-label">To</span>
+                <input type="date" name="to">
+                <span class="field-error" data-error-for="to"></span>
+              </label>
+              <button type="submit" class="button button-primary">Show</button>
+            </form>
+          </div>
+          <div class="card">
+            <div class="card-header">
+              <h2>Stock value</h2>
+              <div class="actions">
+                <button type="button" class="button button-small" data-export="stock-value">Stock value CSV</button>
+                <button type="button" class="button button-small" data-export="products">Products CSV</button>
+              </div>
+            </div>
+            <div id="reports-stock-value"></div>
+          </div>
+          <div class="grid-2">
+            <div class="card">
+              <div class="card-header">
+                <h2>Stock changes</h2>
+                <button type="button" class="button button-small" data-export="stock-movements">All changes CSV</button>
+              </div>
+              <div id="reports-movements"></div>
+            </div>
+            <div class="card">
+              <div class="card-header">
+                <h2>Top sellers</h2>
+                <button type="button" class="button button-small" data-export="top-sellers">Top sellers CSV</button>
+              </div>
+              <div id="reports-top-sellers"></div>
+            </div>
+          </div>
+          <p class="hint">Top sellers count shipped and delivered orders created in the period. CSV files open in Excel and other spreadsheets.</p>
+        </section>
+
         <!-- Orders -->
         <section class="view" data-view="orders" hidden>
           <div id="orders-list-panel">
@@ -210,27 +262,36 @@
               <dd><code id="settings-origin"></code></dd>
             </dl>
             <p class="hint">
-              The backend only accepts requests from the origins listed in <code>WebConfig.java</code>
-              (Tauri, <code>localhost:1420</code> and <code>localhost:5500</code>). If the page origin above isn't one
-              of them, requests fail as if the backend were down.
+              The backend only accepts requests from its allowed origins: by default Tauri, <code>localhost:1420</code>
+              and <code>localhost:5500</code> (change them with <code>inventix.cors.allowed-origins</code>). If the page
+              origin above isn't one of them, requests fail as if the backend were down.
             </p>
           </div>
           <div class="card settings-card">
-            <div class="card-header"><h2>Backup</h2></div>
+            <div class="card-header"><h2>Backup and restore</h2></div>
             <p class="muted">
-              Saves a copy of the whole database as a <code>.zip</code> file on the computer running the backend, in
-              its backups folder (<code>inventix.backup.dir</code>, default <code>.\backups</code>). It is safe to back
-              up while the app is in use.
+              Saves a copy of the whole database as a <code>.zip</code> file on the computer running the backend. It is
+              safe to back up while the app is in use. Copy backups to another drive or cloud folder now and then.
             </p>
+            <dl class="info-list" id="backup-locations"></dl>
             <div class="form-actions">
               <button type="button" class="button button-primary" id="backup-now">Back up now</button>
             </div>
             <div id="backup-result" aria-live="polite" hidden></div>
+            <div id="restore-pending" class="banner" hidden></div>
+            <h3 class="section-title">Backups</h3>
+            <div id="backup-list"></div>
+            <p class="hint">
+              Restoring happens the next time the backend starts: stop it and start it again. The database in use
+              then is kept next to the restored one, so nothing is lost.
+            </p>
           </div>
         </section>
       </main>
     </div>
 
     <div id="toasts" class="toasts" aria-live="polite"></div>
+    <!-- Filled just before printing (e.g. a purchase order); hidden on screen. -->
+    <div id="print-area" aria-hidden="true"></div>
   </body>
 </html>
