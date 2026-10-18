@@ -1,4 +1,5 @@
-// Orders view: list, create, details with items, add/change/remove items, customer, status changes, delete.
+// Orders view: list, create, details with items, add/change/remove items, customer, status changes, printing,
+// delete.
 
 import {
   ApiError,
@@ -520,6 +521,12 @@ function renderDetail() {
       </div>
       <div class="actions">
         ${statusButtons}
+        ${
+          items.length
+            ? `<button type="button" class="button" data-action="print-slip">Packing slip</button>
+               <button type="button" class="button" data-action="print-order">Print order</button>`
+            : ""
+        }
         <button type="button" class="button" data-action="refresh">Refresh</button>
         ${canDelete(order) ? `<button type="button" class="button button-danger" data-action="delete-order">Delete</button>` : ""}
       </div>
@@ -560,6 +567,12 @@ async function onDetailClick(event) {
       break;
     case "change-customer":
       changeCustomer(order);
+      break;
+    case "print-slip":
+      printOrder(order, { prices: false });
+      break;
+    case "print-order":
+      printOrder(order, { prices: true });
       break;
     case "remove-item":
       removeItem(order, button.dataset.itemId);
@@ -686,6 +699,62 @@ async function changeCustomer(order) {
     });
     loadOrderDetail(order.id, { quiet: true });
   }
+}
+
+/**
+ * Prints the order: a packing slip (products and quantities, to go in the box) or, with prices, a copy of the
+ * order with unit prices and the total, for the customer.
+ */
+async function printOrder(order, { prices }) {
+  let customer = null;
+  if (order.customerId) {
+    try {
+      customer = await customersApi.get(order.customerId);
+    } catch {
+      // Print with the name only.
+    }
+  }
+  const items = order.orderItems || [];
+  const units = items.reduce((sum, item) => sum + Number(item.quantity || 0), 0);
+  const rows = items
+    .map(
+      (item) => `
+      <tr>
+        <td>${escapeHtml(item.productSku)}</td>
+        <td>${escapeHtml(item.productName)}</td>
+        <td class="num">${escapeHtml(formatNumber(item.quantity))}</td>
+        ${prices ? `<td class="num">${formatMoney(item.pricePerUnit)}</td><td class="num">${formatMoney(item.subtotal)}</td>` : `<td class="check"></td>`}
+      </tr>`
+    )
+    .join("");
+  const contact = customer
+    ? [customer.address, customer.email, customer.phone].filter(Boolean).map((line) => escapeHtml(line))
+    : [];
+  const customerBlock = order.customerName
+    ? `<h2>${prices ? "Customer" : "Ship to"}</h2>
+       <p class="print-address"><strong>${escapeHtml(order.customerName)}</strong>${contact.map((line) => `<br>${line}`).join("")}</p>`
+    : "";
+  const area = document.getElementById("print-area");
+  area.innerHTML = `
+    <h1>${prices ? "Order" : "Packing slip"} #${escapeHtml(order.id)}</h1>
+    <p>Date: ${escapeHtml(formatDateTime(order.createdAt))} · Status: ${escapeHtml(order.status.charAt(0) + order.status.slice(1).toLowerCase())}</p>
+    ${customerBlock}
+    <table>
+      <thead>
+        <tr><th>SKU</th><th>Product</th><th class="num">Quantity</th>${
+          prices ? `<th class="num">Unit price</th><th class="num">Subtotal</th>` : `<th class="check">Packed</th>`
+        }</tr>
+      </thead>
+      <tbody>${rows}</tbody>
+      <tfoot>
+        ${
+          prices
+            ? `<tr><td colspan="4" class="num">Total</td><td class="num">${formatMoney(order.totalAmount)}</td></tr>`
+            : `<tr><td colspan="2" class="num">Total units</td><td class="num">${escapeHtml(formatNumber(units))}</td><td></td></tr>`
+        }
+      </tfoot>
+    </table>`;
+  window.print();
 }
 
 async function changeStatus(order, status) {
