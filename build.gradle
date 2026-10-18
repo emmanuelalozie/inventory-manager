@@ -23,9 +23,10 @@ repositories {
 	mavenCentral()
 }
 
-// Keep H2 at the version that wrote existing database files and backups. Spring Boot 4.1 would move it to 2.4.x;
-// upgrading H2 needs the export/import steps in docs/REVIEW.md (O-13).
-ext['h2.version'] = '2.2.224'
+// H2 writes its own file format, and some versions can't open files from older ones, so the version is pinned
+// rather than left to Spring Boot. 2.4.240 is the version Boot 4.1 manages. Before changing it, see O-13 in
+// docs/REVIEW.md: existing database files and backups may need an export and re-import.
+ext['h2.version'] = '2.4.240'
 
 dependencies {
 	implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
