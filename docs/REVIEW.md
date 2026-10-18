@@ -1,15 +1,16 @@
-# Inventix Review (v1, updated for v2 Run 1)
+# Inventix Review
 
-This review covers the code smells, bugs and missing features found while finishing Inventix v1, how each one was
-handled, and what is still open. It was updated for v2 Run 1 (persistence, backups, local-only access, response
-DTOs and the stock movement ledger).
+This review covers the code smells, bugs and missing features found while building Inventix, how each one was
+handled, and what is still open. It started with v1 and has been updated through v2 Run 3, Spring Boot 4.1, H2
+2.4.240, automatic backups (F-25) and server mode (F-26).
 
-- **Date:** 2026-10-04
-- **Starting point:** `develop` at `94aa41a` (merge of PR #5, `order-orderitem-fix`)
+- **Last updated:** 2026-10-18
+- **Starting point:** `develop` at `94aa41a` (merge of PR #5, `order-orderitem-fix`); current as of `e19b768` (merge of PR #19)
 - **Scope:** the Spring Boot backend, its tests, the docs, and the Tauri desktop UI in `desktop/`
 
-> The backend compiles and `gradlew.bat clean test` passes (206 tests), and `npm test --prefix desktop` passes
-> (21 tests). The desktop app has not had a first real run yet (see [O-1](#o-1-build-and-tests)).
+> The backend compiles and `./gradlew build` passes (302 tests, on H2 and in CI on PostgreSQL 17), and
+> `npm test --prefix desktop` passes (35 tests). The desktop app has not had a first real run yet (see
+> [O-1](#o-1-build-and-tests)).
 
 Paths below are relative to `src/main/java/com/example/inventix/` unless they start with `src/`, `docs/`,
 `desktop/` or a file at the repository root.
@@ -111,7 +112,7 @@ Ordered roughly by priority.
 
 **Status:** backend fixed; desktop app still needs a first real run.
 The earlier note that the Java code had never been compiled is out of date. The backend compiles and
-`gradlew.bat clean test` passes (206 tests after v2 Run 1). `npm test --prefix desktop` passes (21 tests). The
+`./gradlew build` passes (302 tests). `npm test --prefix desktop` passes (35 tests). The
 Tauri app itself has not been built or clicked through against a live backend yet (it needs the icons from O-6).
 
 **Still open:** run `npm run dev` in `desktop/` against `gradlew.bat bootRun` and click through the main flows,
@@ -245,8 +246,9 @@ so nothing is lazy-loaded during mapping and `spring.jpa.open-in-view=false` is 
 approach (`StockMovementResponse`, product fetched in the query). Tests: `service/OrderResponseMappingTest` (maps
 outside any transaction) and `InventixApplicationTests` (runs with open-in-view off).
 
-**Small follow-up:** the comment above `spring.jpa.open-in-view=false` in `application.properties` says DTOs are
-built inside the service transaction. They are built in the controllers after commit; the comment should say so.
+*Done:* the comment above `spring.jpa.open-in-view=false` in `application.properties` used to say DTOs are built
+inside the service transaction; it now says they are built in the controllers after commit, from data the services
+load up front.
 
 ### O-10. No CI build or test workflow
 
@@ -266,7 +268,7 @@ consider adding `javascript-typescript` for `desktop/src/`.
 
 ### O-11. No OpenAPI / Swagger UI
 
-**Status:** fixed. `springdoc-openapi-starter-webmvc-ui` 2.8.17 (the line for Spring Boot 3.5) serves the
+**Status:** fixed. `springdoc-openapi-starter-webmvc-ui` 3.1.1 (the line for Spring Boot 4.1; it was 2.8.17 on Boot 3.5) serves the
 generated description at `/v3/api-docs` and Swagger UI at `/swagger-ui.html`, with the title set in
 `config/OpenApiConfig.java`. Like the API, they are only reachable from this machine. `docs/API.md` stays the
 reference for the behaviour rules. Covered by two tests in `InventixApplicationTests`.
@@ -341,6 +343,25 @@ place), and the resolved path is logged and shown in Settings (`GET /api/backup`
   instead of deleting them.
 - `locationId` is always `null` until multi-location stock exists.
 - *Done in Run 3:* movements can be filtered by a range of days and return a total count.
+
+### O-17. Gaps found in the October 2026 review
+
+**Status:** open. Found by reading `develop` at `e19b768`; sign-in, deployment and moving data to PostgreSQL are
+already planned (O-2) and left out here.
+
+- **Orders have no customer.** An order is a status, a total and items, with no name, contact or address, so
+  there is no way to tell who it is for. Needs a migration.
+- **No returns after delivery.** Stock only comes back by cancelling a pending order, so a customer return is a
+  manual adjustment and reports can't tell it from a correction.
+- **No stocktake.** Counting the shelf means one manual adjustment per product.
+- **No packing slip or invoice for customer orders.** Only purchase orders print.
+- **No tax, discount or shipping on orders.** The total is the sum of the items. Needs a migration.
+- **Deleting a product deletes its stock history** (see O-16). Archiving instead needs a migration.
+- **CI doesn't compile the Tauri shell**, and the icons it needs aren't committed (O-6).
+- **Running it:** no health endpoint, logs only go to the console, and there are no published builds, code signing
+  or updates.
+
+Changes that touch the database or existing data each get their own pull request.
 
 ## 5. Roadmap
 
