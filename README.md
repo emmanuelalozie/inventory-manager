@@ -178,10 +178,18 @@ Settings live in `src/main/resources/application.properties`, with a comment on 
 | `INVENTIX_CORS_ALLOWED_ORIGINS` | The Tauri window and `http://127.0.0.1` / `localhost` on ports 1420 and 5500 | Comma-separated origins allowed to call `/api/**` from a browser. Setting it replaces the list. |
 | `INVENTIX_SEED_DATA` | `true` | Add five sample products on a first start, when there are none |
 | `SERVER_PORT` | `8080` | The backend's port. The window's Settings must point at the new one. |
+| `SPRING_PROFILES_ACTIVE` | unset (local mode) | `server` switches to [server mode](#server-mode) |
+| `SPRING_DATASOURCE_URL`, `_USERNAME`, `_PASSWORD` | `jdbc:postgresql://localhost:5432/inventix`, `inventix`, empty | Server mode only: the PostgreSQL database |
 
 ## Data
 
 Everything is kept in a per-user folder, whatever folder the backend is started from: `%LOCALAPPDATA%\Inventix` on Windows, `~/Library/Application Support/Inventix` on macOS and `$XDG_DATA_HOME/inventix` (or `~/.local/share/inventix`) on Linux, all shown in the window's Settings. It holds `data/inventix.mv.db` (the H2 database, which only one process may open at a time, so use the H2 console or a backup rather than opening or copying the file while the backend runs) and `backups/inventix-backup-<yyyyMMdd-HHmmss>.zip` (from Back up now or `POST /api/backup`, safe while the app is in use and never deleted automatically) and `backups/inventix-auto-<yyyyMMdd-HHmmss>.zip` (made by the backend when the newest is a day old and when it shuts down, with only the newest 14 kept). Restoring writes `data/restore-pending.txt`; on the next start, before the database opens, the backup is put in place and the database it replaces is kept as `data/inventix-before-restore-<timestamp>.mv.db`, and until then the restore can be cancelled. Older versions kept the database in `./data` under the start folder: on the first start from there, it's copied (not moved) to the new folder and the log says so, and old backups stay where they were. The schema is built by Flyway migrations `V1` to `V8` in `src/main/resources/db/migration`, which also bring a restored older backup up to date, and Hibernate only checks that the entities match it. H2 is pinned to 2.4.240, which also opens databases and backups from the 2.2.224 that earlier versions used. It's pinned rather than left to Spring Boot because some H2 versions change the file format, and crossing such a change needs an export and re-import ([O-13 in the review](docs/REVIEW.md#o-13-h2-file-format-changes-on-upgrade)).
+
+### Server mode
+
+Local mode, the default, is everything above: an H2 file in your user folder. Server mode is for moving Inventix to a hosted PostgreSQL database, so the data doesn't live on one computer. Start the backend with `SPRING_PROFILES_ACTIVE=server` and the `SPRING_DATASOURCE_*` variables; Flyway builds the schema on the first start with the same migrations. In server mode there are no sample products, no H2 console and no zip backups (`/api/backup` answers 409), because the hosted database keeps its own backups. Settings are in `src/main/resources/application-server.properties`.
+
+Server mode still only listens on `127.0.0.1`: opening it to other machines waits for sign-in ([O-2](docs/REVIEW.md#o-2-no-authentication-or-authorization)). Moving existing data from the H2 file into PostgreSQL isn't built yet. CI runs the backend tests against PostgreSQL 17 as well as H2.
 
 ## Deploy
 

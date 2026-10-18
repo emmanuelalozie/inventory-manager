@@ -32,14 +32,14 @@ public interface StockMovementRepository extends JpaRepository<StockMovement, Lo
     @Query(value = "select m from StockMovement m join fetch m.product p"
             + " where (:productId is null or p.id = :productId)"
             + " and (:reason is null or m.reason = :reason)"
-            + " and (:start is null or m.createdAt >= :start)"
-            + " and (:endExclusive is null or m.createdAt < :endExclusive)"
+            + " and (cast(:start as LocalDateTime) is null or m.createdAt >= :start)"
+            + " and (cast(:endExclusive as LocalDateTime) is null or m.createdAt < :endExclusive)"
             + " order by m.createdAt desc, m.id desc",
             countQuery = "select count(m) from StockMovement m"
             + " where (:productId is null or m.product.id = :productId)"
             + " and (:reason is null or m.reason = :reason)"
-            + " and (:start is null or m.createdAt >= :start)"
-            + " and (:endExclusive is null or m.createdAt < :endExclusive)")
+            + " and (cast(:start as LocalDateTime) is null or m.createdAt >= :start)"
+            + " and (cast(:endExclusive as LocalDateTime) is null or m.createdAt < :endExclusive)")
     Page<StockMovement> searchInRange(@Param("productId") Long productId,
                                       @Param("reason") MovementReason reason,
                                       @Param("start") LocalDateTime start,
@@ -51,8 +51,8 @@ public interface StockMovementRepository extends JpaRepository<StockMovement, Lo
             + " coalesce(sum(case when m.delta > 0 then m.delta else 0 end), 0),"
             + " coalesce(sum(case when m.delta < 0 then -m.delta else 0 end), 0)"
             + " from StockMovement m"
-            + " where (:start is null or m.createdAt >= :start)"
-            + " and (:endExclusive is null or m.createdAt < :endExclusive)"
+            + " where (cast(:start as LocalDateTime) is null or m.createdAt >= :start)"
+            + " and (cast(:endExclusive as LocalDateTime) is null or m.createdAt < :endExclusive)"
             + " group by m.reason")
     List<Object[]> summarizeByReason(@Param("start") LocalDateTime start,
                                      @Param("endExclusive") LocalDateTime endExclusive);

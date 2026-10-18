@@ -58,17 +58,33 @@ public class BackupServiceImpl implements BackupService {
     private final Path backupDir;
     // Null when the database isn't a managed file (inventix.data.dir unset, e.g. the in-memory test database).
     private final Path dataDir;
+    // False in server mode: BACKUP TO only exists in H2, and the hosted PostgreSQL database keeps its own backups.
+    private final boolean enabled;
+
+    public BackupServiceImpl(JdbcTemplate jdbcTemplate, String backupDir, String dataDir) {
+        this(jdbcTemplate, backupDir, dataDir, true);
+    }
 
     @Autowired
     public BackupServiceImpl(JdbcTemplate jdbcTemplate, @Value("${inventix.backup.dir:./backups}") String backupDir,
-                             @Value("${inventix.data.dir:}") String dataDir) {
+                             @Value("${inventix.data.dir:}") String dataDir,
+                             @Value("${inventix.backup.enabled:true}") boolean enabled) {
         this.jdbcTemplate = jdbcTemplate;
         this.backupDir = Path.of(backupDir).toAbsolutePath().normalize();
         this.dataDir = dataDir.isBlank() ? null : Path.of(dataDir).toAbsolutePath().normalize();
+        this.enabled = enabled;
+    }
+
+    private void requireEnabled() {
+        if (!enabled) {
+            throw new BackupNotAvailableException(
+                    "Backups are made by the hosted database in server mode, not by Inventix.");
+        }
     }
 
     @Override
     public BackupStatusResponse getStatus() {
+        requireEnabled();
         List<BackupStatusResponse.Backup> backups = new ArrayList<>();
         if (Files.isDirectory(backupDir)) {
             try (Stream<Path> files = Files.list(backupDir)) {
@@ -93,6 +109,7 @@ public class BackupServiceImpl implements BackupService {
 
     @Override
     public BackupStatusResponse requestRestore(String fileName) {
+        requireEnabled();
         if (dataDir == null) {
             throw new BackupNotAvailableException("The database isn't a file managed by Inventix, so it can't be restored here.");
         }
@@ -118,6 +135,7 @@ public class BackupServiceImpl implements BackupService {
 
     @Override
     public BackupStatusResponse cancelRestore() {
+        requireEnabled();
         if (dataDir != null) {
             try {
                 Files.deleteIfExists(dataDir.resolve(DataLocation.RESTORE_MARKER));
@@ -203,6 +221,7 @@ public class BackupServiceImpl implements BackupService {
     }
 
     private BackupResponse writeBackup(String prefix) {
+        requireEnabled();
         try {
             Files.createDirectories(backupDir);
         } catch (IOException e) {

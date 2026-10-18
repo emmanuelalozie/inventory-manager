@@ -85,6 +85,7 @@ Paths below are relative to `src/main/java/com/example/inventix/` unless they st
 | F-22 | **Ops:** per-user data folder with a one-time copy from `./data` (O-15), and restore on next start from Settings or `POST /api/backup/restore` (O-14). `GET /api/backup` lists backups and folders. | `config/DataLocation.java`, `config/DataLocationPostProcessor.java`, `META-INF/spring.factories`, `service/impl/BackupServiceImpl.java`, `controller/BackupController.java`, `desktop/src/js/main.js` |
 | F-23 | **Platform:** Spring Boot 4.1.1 and Gradle 9.8.1 (O-3). | `build.gradle`, `gradle/wrapper/gradle-wrapper.properties`, test imports, `config/DataLocationPostProcessor.java` |
 | F-24 | **H2 2.4.240** (O-13): pinned to the version Boot 4.1 manages, after checking that 2.2.224 files and backups open unchanged. | `build.gradle` |
+| F-26 | **Server mode** (O-2): `SPRING_PROFILES_ACTIVE=server` uses PostgreSQL with the same Flyway migrations, and turns off the per-user data folder, H2 console, zip backups (409) and sample data. Nullable date parameters in queries are cast, because PostgreSQL can't infer the type of `? is null` for `java.time` values. CI runs the tests against PostgreSQL 17 too. Still on `127.0.0.1` until sign-in exists; no data migration from H2 yet. | `application-server.properties`, `service/impl/BackupServiceImpl.java`, `repository/StockMovementRepository.java`, `repository/OrderItemRepository.java`, `build.gradle`, `.github/workflows/ci.yml`, `ServerModeTests` |
 | F-25 | **Automatic backups** (O-14): `inventix-auto-<timestamp>.zip` when the newest is older than `inventix.backup.auto.interval` (24h, checked a minute after start and hourly) and on shutdown; only the newest `inventix.backup.auto.keep` (14) are kept, and Back up now files are never deleted. A failed backup is logged and retried at the next check. Pointing `INVENTIX_BACKUP_DIR` at a synced folder takes the copies off the machine. | `config/AutomaticBackups.java`, `service/impl/BackupServiceImpl.java`, `application.properties` |
 
 **Tests added or updated** (`src/test/java/com/example/inventix/`):
@@ -135,7 +136,7 @@ paths) and `model/Role.java`. The commented-out security lines were removed from
 
 **Remaining risk:** any program or user account on the same machine can still call the API and open
 `/h2-console`. If the app is ever shared or moved to a server, add authentication (Spring Security for `/api/**`,
-users with BCrypt hashes, H2 console off) **before** changing `server.address`.
+users with BCrypt hashes, H2 console off) **before** changing `server.address`. *Update:* moving to a hosted backend is now planned. Server mode (F-26) is the first step and keeps `127.0.0.1`; sign-in comes next, then deployment, then moving existing data.
 
 ### O-3. Spring Boot 3.3.x is out of open-source support
 
