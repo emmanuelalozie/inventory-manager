@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="Inventix">
+  <rect width="128" height="128" rx="28" fill="#2563eb"/>
+  <g fill="#ffffff">
+    <rect x="30" y="38" width="13" height="52" rx="3"/>
+    <g transform="translate(76 64)">
+      <rect x="-6.5" y="-31" width="13" height="62" rx="3" transform="rotate(32)"/>
+      <rect x="-6.5" y="-31" width="13" height="62" rx="3" transform="rotate(-32)"/>
+    </g>
+  </g>
+</svg>
