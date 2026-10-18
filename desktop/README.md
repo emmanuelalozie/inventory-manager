@@ -28,7 +28,7 @@ It covers:
   app's local storage, plus a connection test and a **Back up now** button that saves a `.zip` copy of the
   database in the backend's `backups\` folder and shows its file name, path and size. It also shows where the
   database and backups live, lists the backups, and can restore one on the next start of the backend (see
-  [Data and backups](../README.md#data-and-backups)).
+  [Data](../README.md#data)).
 
 Errors from the backend (the JSON error body described in `..\docs\API.md`) appear as toasts, or next to the
 fields they belong to in forms. If the backend can't be reached, a banner says so and shows the URL it tried.
@@ -97,7 +97,7 @@ desktop\
 
    It listens on `http://localhost:8080` (local connections only). Data is kept in `data\inventix.mv.db` under the
    folder you start it from, and five sample products are added on the first start only. See
-   [Data and backups](../README.md#data-and-backups) for where the data lives and how to restore a backup.
+   [Data](../README.md#data) for where the data lives and how to restore a backup.
 
 2. **Install the Tauri CLI** in a second terminal:
 
