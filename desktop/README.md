@@ -14,8 +14,11 @@ It covers:
   Products have an optional category and unit cost; filter the list by category, and manage categories with the
   Categories button.
   The History button lists the product's stock movements (date, reason, change, note, order), newest first.
-- **Orders:** list and filter by status, create an order from a product picker, view an order's items and total,
+- **Orders:** list and filter by status or customer, create an order for a customer from a product picker, set or
+  change an order's customer, view an order's items and total,
   add items, change item quantities, remove items, change the status (ship, deliver, cancel) and delete orders.
+- **Customers:** list, search, create, edit and delete customers (name, email, phone, address, notes), and open
+  one customer's orders. A customer with orders can't be deleted.
 - **Suppliers:** list, create, edit and delete suppliers.
 - **Purchase orders:** list and filter by status or supplier, draft a purchase order with several lines, mark it as
   ordered, receive what arrived (in parts), cancel the rest of a single line, close or cancel it, delete drafts, and
@@ -54,7 +57,8 @@ desktop\
 │       ├── settings.js     Low-stock threshold preference
 │       ├── dashboard.js
 │       ├── products.js
-│       └── orders.js
+│       ├── orders.js
+│       └── customers.js
 └── src-tauri\              The Rust shell around the webview
     ├── Cargo.toml
     ├── build.rs
