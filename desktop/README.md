@@ -52,9 +52,13 @@ desktop\
 │       ├── helpers.js      Pure helpers (note checks, movement and backup formatting), tested in node
 │       ├── package.json    {"type": "module"} so node --test loads these files as ES modules
 │       ├── settings.js     Low-stock threshold preference
-│       ├── dashboard.js
+│       ├── dashboard.js    One file per screen from here down
 │       ├── products.js
-│       └── orders.js
+│       ├── orders.js
+│       ├── purchase-orders.js
+│       ├── production.js
+│       ├── suppliers.js
+│       └── reports.js
 └── src-tauri\              The Rust shell around the webview
     ├── Cargo.toml
     ├── build.rs
@@ -95,8 +99,9 @@ desktop\
    .\gradlew.bat bootRun
    ```
 
-   It listens on `http://localhost:8080` (local connections only). Data is kept in `data\inventix.mv.db` under the
-   folder you start it from, and five sample products are added on the first start only. See
+   It listens on `http://localhost:8080` (local connections only). Data is kept in your user folder
+   (`%LOCALAPPDATA%\Inventix` on Windows), whatever folder you start it from, and five sample products are added
+   on the first start only. See
    [Data](../README.md#data) for where the data lives and how to restore a backup.
 
 2. **Install the Tauri CLI** in a second terminal:
