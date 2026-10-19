@@ -64,7 +64,7 @@ desktop\
     ├── build.rs
     ├── tauri.conf.json
     ├── capabilities\default.json
-    ├── icons\              Generated with `npx tauri icon` (see below)
+    ├── icons\              App icons, made from .github/assets/logo.svg
     └── src\main.rs, lib.rs
 ```
 
@@ -111,16 +111,7 @@ desktop\
    npm install
    ```
 
-3. **Create the app icons** (only needed once). Tauri needs them even in development, and they are binary files
-   that aren't checked in. Use any square PNG of at least 1024×1024:
-
-   ```powershell
-   npx tauri icon path\to\logo.png
-   ```
-
-   This fills `src-tauri\icons\`. See `src-tauri\icons\README.md`.
-
-4. **Run the app in development:**
+3. **Run the app in development:**
 
    ```powershell
    npm run dev
@@ -134,7 +125,7 @@ desktop\
    moving to another port, because any other port would be blocked by CORS. The **Settings** page shows the
    window's current origin if you need to check.
 
-5. **Build an installer:**
+4. **Build an installer:**
 
    ```powershell
    npm run build
