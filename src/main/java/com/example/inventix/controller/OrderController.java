@@ -4,6 +4,8 @@ import com.example.inventix.config.WebConfig;
 import com.example.inventix.dto.OrderCustomerRequest;
 import com.example.inventix.dto.OrderItemRequest;
 import com.example.inventix.dto.OrderItemResponse;
+import com.example.inventix.dto.OrderReturnRequest;
+import com.example.inventix.dto.OrderReturnsResponse;
 import com.example.inventix.dto.OrderRequest;
 import com.example.inventix.dto.OrderResponse;
 import com.example.inventix.dto.OrderStatusRequest;
@@ -13,6 +15,7 @@ import com.example.inventix.model.Order;
 import com.example.inventix.model.OrderItem;
 import com.example.inventix.model.OrderStatus;
 import com.example.inventix.service.OrderItemService;
+import com.example.inventix.service.OrderReturnService;
 import com.example.inventix.service.OrderService;
 import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -33,11 +36,14 @@ public class OrderController {
 
     private final OrderService orderService;
     private final OrderItemService orderItemService;
+    private final OrderReturnService orderReturnService;
 
     @Autowired
-    public OrderController(OrderService orderService, OrderItemService orderItemService) {
+    public OrderController(OrderService orderService, OrderItemService orderItemService,
+                           OrderReturnService orderReturnService) {
         this.orderService = orderService;
         this.orderItemService = orderItemService;
+        this.orderReturnService = orderReturnService;
     }
 
     /**
@@ -114,6 +120,17 @@ public class OrderController {
             @PathVariable Long id,
             @RequestBody OrderCustomerRequest request) {
         return ResponseEntity.ok(OrderResponse.from(orderService.setOrderCustomer(id, request.customerId())));
+    }
+
+    @GetMapping("/{id}/returns")
+    public OrderReturnsResponse getReturns(@PathVariable Long id) {
+        return orderReturnService.getReturns(id);
+    }
+
+    /** Puts units a customer sent back into stock (shipped or delivered orders only). */
+    @PostMapping("/{id}/returns")
+    public OrderReturnsResponse returnItems(@PathVariable Long id, @Valid @RequestBody OrderReturnRequest request) {
+        return orderReturnService.returnItems(id, request);
     }
 
     @DeleteMapping("/{id}")

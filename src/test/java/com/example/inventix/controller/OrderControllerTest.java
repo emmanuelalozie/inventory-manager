@@ -1,5 +1,6 @@
 package com.example.inventix.controller;
 
+import com.example.inventix.dto.OrderReturnsResponse;
 import com.example.inventix.exception.InsufficientStockException;
 import com.example.inventix.exception.InvalidOrderStateException;
 import com.example.inventix.exception.OrderItemNotFoundException;
@@ -10,6 +11,7 @@ import com.example.inventix.model.OrderItem;
 import com.example.inventix.model.OrderStatus;
 import com.example.inventix.model.Product;
 import com.example.inventix.service.OrderItemService;
+import com.example.inventix.service.OrderReturnService;
 import com.example.inventix.service.OrderService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -61,6 +63,9 @@ class OrderControllerTest {
 
     @MockitoBean
     private OrderItemService orderItemService;
+
+    @MockitoBean
+    private OrderReturnService orderReturnService;
 
     private static Product product(long id, String price, int quantity) {
         return new Product(id, "Widget " + id, "W-" + id, "A widget", new BigDecimal(price), quantity, null, null);
@@ -150,6 +155,37 @@ class OrderControllerTest {
                 .andExpect(jsonPath("$.status").value("SHIPPED"));
 
         verify(orderService).setOrderCustomer(1L, null);
+    }
+
+    @Test
+    void returns_postsTheLines_andReturnsWhatIsLeft() throws Exception {
+        when(orderReturnService.returnItems(eq(4L), any())).thenReturn(new OrderReturnsResponse(4L,
+                List.of(OrderReturnsResponse.Line.of(1L, "W-1", "Widget 1", 3, 1))));
+
+        mockMvc.perform(post("/api/orders/{id}/returns", 4L)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"note\":\"Wrong colour\",\"lines\":[{\"productId\":1,\"quantity\":1}]}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.lines[0].quantityReturned").value(1))
+                .andExpect(jsonPath("$.lines[0].quantityReturnable").value(2));
+
+        verify(orderReturnService).returnItems(eq(4L), argThat(r -> "Wrong colour".equals(r.note())
+                && r.lines().get(0).quantity() == 1));
+    }
+
+    @Test
+    void returns_400ForAZeroQuantityOrNoLines() throws Exception {
+        mockMvc.perform(post("/api/orders/{id}/returns", 4L)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"lines\":[{\"productId\":1,\"quantity\":0}]}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.fieldErrors[0].field").value("lines[0].quantity"));
+        mockMvc.perform(post("/api/orders/{id}/returns", 4L)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"lines\":[]}"))
+                .andExpect(status().isBadRequest());
+
+        verify(orderReturnService, never()).returnItems(anyLong(), any());
     }
 
     @Test

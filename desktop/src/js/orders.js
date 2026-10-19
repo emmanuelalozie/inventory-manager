@@ -1,4 +1,5 @@
-// Orders view: list, create, details with items, add/change/remove items, customer, status changes, delete.
+// Orders view: list, create, details with items, add/change/remove items, customer, status changes, customer
+// returns, delete.
 
 import {
   ApiError,
@@ -54,6 +55,7 @@ let customerFilter = ""; // a customer id, or "" for all
 let customerList = []; // for the filter and the pickers, by name
 let currentOrder = null;
 let pickerProducts = [];
+let currentReturns = null; // what was sold and returned per product, for shipped and delivered orders
 let detailRequest = 0;
 
 const listPanel = () => document.getElementById("orders-list-panel");
@@ -415,8 +417,10 @@ async function loadOrderDetail(orderId, { quiet = false } = {}) {
   }
   try {
     const [order, productList] = await Promise.all([ordersApi.get(orderId), productsApi.list()]);
+    const returns = takesReturns(order) ? await ordersApi.getReturns(order.id) : null;
     if (requestId !== detailRequest) return; // the user navigated elsewhere meanwhile
     currentOrder = order;
+    currentReturns = returns;
     pickerProducts = productList;
     renderDetail();
   } catch (error) {
@@ -443,6 +447,10 @@ function renderDetail() {
     })
     .join("");
 
+  const returnedByProduct = new Map((currentReturns?.lines || []).map((l) => [String(l.productId), l.quantityReturned]));
+  const anyReturned = [...returnedByProduct.values()].some((n) => n > 0);
+  const canReturn = (currentReturns?.lines || []).some((l) => l.quantityReturnable > 0);
+
   // Items only carry the product's id, name and SKU; the current stock comes from the product list.
   const stockById = new Map(pickerProducts.map((p) => [String(p.id), Number(p.quantity)]));
   const itemRows = items
@@ -462,6 +470,7 @@ function renderDetail() {
           <td class="num">${formatMoney(item.pricePerUnit)}</td>
           <td class="num">${quantityCell}</td>
           <td class="num">${formatMoney(item.subtotal)}</td>
+          ${anyReturned ? `<td class="num">${returnedCell(item, returnedByProduct)}</td>` : ""}
           ${
             editable
               ? `<td class="row-actions"><button type="button" class="button button-small button-danger-ghost" data-action="remove-item" data-item-id="${escapeHtml(item.id)}">Remove</button></td>`
@@ -475,11 +484,11 @@ function renderDetail() {
     ? `<div class="table-wrap">
          <table class="table">
            <thead>
-             <tr><th>Product</th><th class="num">Unit price</th><th class="num">Qty</th><th class="num">Subtotal</th>${editable ? "<th></th>" : ""}</tr>
+             <tr><th>Product</th><th class="num">Unit price</th><th class="num">Qty</th><th class="num">Subtotal</th>${anyReturned ? `<th class="num">Returned</th>` : ""}${editable ? "<th></th>" : ""}</tr>
            </thead>
            <tbody>${itemRows}</tbody>
            <tfoot>
-             <tr><td colspan="3" class="num">Total</td><td class="num total">${formatMoney(order.totalAmount)}</td>${editable ? "<td></td>" : ""}</tr>
+             <tr><td colspan="3" class="num">Total</td><td class="num total">${formatMoney(order.totalAmount)}</td>${anyReturned ? "<td></td>" : ""}${editable ? "<td></td>" : ""}</tr>
            </tfoot>
          </table>
        </div>`
@@ -503,7 +512,9 @@ function renderDetail() {
          </form>
          <p class="hint">Adding an item reserves its stock right away. Removing it gives the stock back.</p>
        </div>`
-    : `<div class="card"><p class="muted">This order is ${escapeHtml(order.status.toLowerCase())}, so its items can no longer be changed.</p></div>`;
+    : `<div class="card"><p class="muted">This order is ${escapeHtml(order.status.toLowerCase())}, so its items can no longer be changed.${
+        takesReturns(order) ? " If the customer sends something back, use “Return items” to put it back in stock." : ""
+      }</p></div>`;
 
   detailPanel().innerHTML = `
     <a href="#/orders" class="back-link">← All orders</a>
@@ -520,6 +531,7 @@ function renderDetail() {
       </div>
       <div class="actions">
         ${statusButtons}
+        ${canReturn ? `<button type="button" class="button" data-action="return-items">Return items</button>` : ""}
         <button type="button" class="button" data-action="refresh">Refresh</button>
         ${canDelete(order) ? `<button type="button" class="button button-danger" data-action="delete-order">Delete</button>` : ""}
       </div>
@@ -560,6 +572,9 @@ async function onDetailClick(event) {
       break;
     case "change-customer":
       changeCustomer(order);
+      break;
+    case "return-items":
+      returnItems(order);
       break;
     case "remove-item":
       removeItem(order, button.dataset.itemId);
@@ -684,6 +699,77 @@ async function changeCustomer(order) {
     toast(updated.customerName ? `Order #${order.id} is now for ${updated.customerName}` : `Removed the customer from order #${order.id}`, {
       type: "success",
     });
+    loadOrderDetail(order.id, { quiet: true });
+  }
+}
+
+function takesReturns(order) {
+  return order.status === "SHIPPED" || order.status === "DELIVERED";
+}
+
+// Returns are kept per product, so a product listed on two lines shows its returns on the first one.
+function returnedCell(item, returnedByProduct) {
+  const key = String(item.productId);
+  const first = (currentOrder.orderItems || []).find((i) => String(i.productId) === key);
+  const returned = first === item ? returnedByProduct.get(key) || 0 : 0;
+  return returned ? escapeHtml(formatNumber(returned)) : `<span class="muted">—</span>`;
+}
+
+async function returnItems(order) {
+  const lines = (currentReturns?.lines || []).filter((l) => l.quantityReturnable > 0);
+  const rows = lines
+    .map(
+      (l) => `
+      <tr>
+        <td><div class="cell-title">${escapeHtml(l.productName)}</div><div class="cell-sub">${escapeHtml(l.productSku)}</div></td>
+        <td class="num">${escapeHtml(formatNumber(l.quantitySold))}</td>
+        <td class="num">${escapeHtml(formatNumber(l.quantityReturned))}</td>
+        <td class="num">
+          <input class="return-input" name="return-${escapeHtml(l.productId)}" type="number" min="0" max="${escapeHtml(l.quantityReturnable)}"
+                 step="1" placeholder="0" aria-label="Return ${escapeHtml(l.productName)}">
+          <span class="field-error" data-error-for="return-${escapeHtml(l.productId)}"></span>
+        </td>
+      </tr>`
+    )
+    .join("");
+  const result = await openDialog({
+    title: `Return items from order #${order.id}`,
+    submitLabel: "Put back in stock",
+    wide: true,
+    body: `
+      <div class="table-wrap">
+        <table class="table table-compact">
+          <thead><tr><th>Product</th><th class="num">Sold</th><th class="num">Returned</th><th class="num">Returning now</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+      <label class="field">
+        <span class="field-label">Note</span>
+        <input name="note" maxlength="400" placeholder="e.g. Wrong size" autocomplete="off">
+      </label>
+      <p class="hint">Returned units go back into stock as a customer return. The order's total and status don't change. If something came back damaged, take it out again with Stock on the product.</p>`,
+    onSubmit(form) {
+      const request = [];
+      for (const l of lines) {
+        const name = `return-${l.productId}`;
+        const text = form.elements[name].value.trim();
+        if (!text || text === "0") continue;
+        const quantity = parseWholeNumber(text);
+        if (Number.isNaN(quantity) || quantity > l.quantityReturnable) {
+          setFieldError(form, name, `0 to ${l.quantityReturnable}`);
+          return false;
+        }
+        request.push({ productId: l.productId, quantity });
+      }
+      if (!request.length) {
+        setFieldError(form, `return-${lines[0].productId}`, "Enter how many came back");
+        return false;
+      }
+      return ordersApi.returnItems(order.id, request, form.elements.note.value.trim());
+    },
+  });
+  if (result) {
+    toast(`Returned items from order #${order.id} to stock`, { type: "success" });
     loadOrderDetail(order.id, { quiet: true });
   }
 }

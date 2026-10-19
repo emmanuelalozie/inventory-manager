@@ -25,6 +25,7 @@ export const MOVEMENT_REASONS = {
   SALE: "Sale",
   CANCEL: "Returned to stock",
   RECEIPT: "Receipt",
+  RETURN: "Customer return",
   PRODUCTION: "Production",
   CONSUMPTION: "Used in production",
   ADJUSTMENT: "Adjustment",
