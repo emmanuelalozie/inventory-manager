@@ -15,6 +15,7 @@ import com.example.inventix.repository.OrderRepository;
 import com.example.inventix.repository.ProductRepository;
 import com.example.inventix.repository.StockMovementRepository;
 import com.example.inventix.service.impl.OrderItemServiceImpl;
+import com.example.inventix.service.impl.CustomerServiceImpl;
 import com.example.inventix.service.impl.OrderServiceImpl;
 import com.example.inventix.service.impl.ProductServiceImpl;
 import org.assertj.core.groups.Tuple;
@@ -38,7 +39,7 @@ import static org.assertj.core.api.Assertions.tuple;
  * Each test runs in one transaction that is rolled back afterwards.
  */
 @DataJpaTest
-@Import({ProductServiceImpl.class, OrderItemServiceImpl.class, OrderServiceImpl.class})
+@Import({ProductServiceImpl.class, OrderItemServiceImpl.class, OrderServiceImpl.class, CustomerServiceImpl.class})
 class OrderStockIntegrationTest {
 
     @Autowired

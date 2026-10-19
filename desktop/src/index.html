@@ -19,6 +19,7 @@
           <a class="nav-link" href="#/dashboard" data-view="dashboard">Dashboard</a>
           <a class="nav-link" href="#/products" data-view="products">Products</a>
           <a class="nav-link" href="#/orders" data-view="orders">Orders</a>
+          <a class="nav-link" href="#/customers" data-view="customers">Customers</a>
           <a class="nav-link" href="#/purchase-orders" data-view="purchase-orders">Purchase orders</a>
           <a class="nav-link" href="#/production" data-view="production">Production</a>
           <a class="nav-link" href="#/suppliers" data-view="suppliers">Suppliers</a>
@@ -143,6 +144,29 @@
           </div>
         </section>
 
+        <!-- Customers -->
+        <section class="view" data-view="customers" hidden>
+          <div class="view-header">
+            <div>
+              <h1>Customers</h1>
+              <p class="muted" id="customers-count"></p>
+            </div>
+            <div class="actions">
+              <input
+                type="search"
+                id="customers-search"
+                class="search"
+                placeholder="Search name, email or phone"
+                aria-label="Search customers"
+              />
+              <button type="button" class="button button-primary" id="customers-new">New customer</button>
+            </div>
+          </div>
+          <div class="card card-flush">
+            <div id="customers-table"></div>
+          </div>
+        </section>
+
         <!-- Suppliers -->
         <section class="view" data-view="suppliers" hidden>
           <div class="view-header">
@@ -217,6 +241,7 @@
                 <p class="muted" id="orders-count"></p>
               </div>
               <div class="actions">
+                <select id="orders-customer-filter" aria-label="Filter by customer"><option value="">All customers</option></select>
                 <select id="orders-status-filter" aria-label="Filter by status"></select>
                 <button type="button" class="button" id="orders-refresh">Refresh</button>
                 <button type="button" class="button button-primary" id="orders-new">New order</button>

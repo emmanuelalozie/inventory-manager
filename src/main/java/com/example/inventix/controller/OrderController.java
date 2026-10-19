@@ -1,6 +1,7 @@
 package com.example.inventix.controller;
 
 import com.example.inventix.config.WebConfig;
+import com.example.inventix.dto.OrderCustomerRequest;
 import com.example.inventix.dto.OrderItemRequest;
 import com.example.inventix.dto.OrderItemResponse;
 import com.example.inventix.dto.OrderReturnRequest;
@@ -46,15 +47,16 @@ public class OrderController {
     }
 
     /**
-     * Lists orders newest first, optionally filtered by status and paged with page/size.
+     * Lists orders newest first, optionally filtered by status and customer and paged with page/size.
      * X-Total-Count holds the number of matches across all pages.
      */
     @GetMapping
     public ResponseEntity<List<OrderResponse>> getAllOrders(
             @RequestParam(required = false) OrderStatus status,
+            @RequestParam(required = false) Long customerId,
             @RequestParam(required = false) Integer page,
             @RequestParam(required = false) Integer size) {
-        Page<Order> result = orderService.searchOrders(status, page, size);
+        Page<Order> result = orderService.searchOrders(status, customerId, page, size);
         return ResponseEntity.ok()
                 .header(WebConfig.TOTAL_COUNT_HEADER, String.valueOf(result.getTotalElements()))
                 .body(OrderResponse.fromAll(result.getContent()));
@@ -89,7 +91,7 @@ public class OrderController {
 
         Order newOrder = new Order();
         newOrder.setIdempotencyKey(idempotencyKey);
-        OrderResponse createdOrder = OrderResponse.from(orderService.createOrderWithItems(newOrder, request.toItems()));
+        OrderResponse createdOrder = OrderResponse.from(orderService.createOrderWithItems(newOrder, request.customerId(), request.toItems()));
         URI location = ServletUriComponentsBuilder.fromCurrentRequest()
                 .path("/{id}")
                 .buildAndExpand(createdOrder.id())
@@ -113,6 +115,13 @@ public class OrderController {
         return ResponseEntity.ok(OrderResponse.from(orderService.updateOrderStatus(id, request.status())));
     }
 
+    @PatchMapping("/{id}/customer")
+    public ResponseEntity<OrderResponse> updateOrderCustomer(
+            @PathVariable Long id,
+            @RequestBody OrderCustomerRequest request) {
+        return ResponseEntity.ok(OrderResponse.from(orderService.setOrderCustomer(id, request.customerId())));
+    }
+
     @GetMapping("/{id}/returns")
     public OrderReturnsResponse getReturns(@PathVariable Long id) {
         return orderReturnService.getReturns(id);
@@ -124,7 +133,7 @@ public class OrderController {
         return orderReturnService.returnItems(id, request);
     }
 
-        @DeleteMapping("/{id}")
+    @DeleteMapping("/{id}")
     public ResponseEntity<Void> deleteOrder(@PathVariable Long id) {
         orderService.deleteOrder(id);
         return ResponseEntity.noContent().build();

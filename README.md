@@ -6,7 +6,7 @@
 
 **Know what's on the shelf, what's on its way and what to reorder, on your own computer.**
 
-Inventix is an inventory app for a small business run from one computer: a Spring Boot backend that keeps the data in a local file, and a desktop window (Tauri 2) on top of it. It tracks products and stock, customer orders, suppliers and purchase orders, in-house production with bills of materials, and reports with CSV export. Every stock change goes in a ledger with its reason, stock never goes below zero, and the API only answers on `127.0.0.1`, so there's no login and nothing to host.
+Inventix is an inventory app for a small business run from one computer: a Spring Boot backend that keeps the data in a local file, and a desktop window (Tauri 2) on top of it. It tracks products and stock, customers and their orders, suppliers and purchase orders, in-house production with bills of materials, and reports with CSV export. Every stock change goes in a ledger with its reason, stock never goes below zero, and the API only answers on `127.0.0.1`, so there's no login and nothing to host.
 
 [How to use it](#how-to-use-it) · [Quick start](#quick-start) · [How it works](#how-it-works) · [Configuration](#configuration) · [Data](#data) · [Deploy](#deploy)
 
@@ -19,6 +19,7 @@ Inventix is an inventory app for a small business run from one computer: a Sprin
 ## Why use it
 
 - **Stock adds up.** Every change (a sale, a cancellation, a receipt, a production run, the components it used, a manual adjustment) writes a movement with its reason, time, note and the order behind it. A manual adjustment needs a note, a change that would take stock below zero is refused, and two edits of the same product at once can't overwrite each other (the second gets a 409 and reloads).
+- **Orders know who they're for.** Each order can have a customer, with their contact details and address, and the order list can be filtered to one customer. The customer can be corrected on any order, even a shipped one, and a customer with orders can't be deleted.
 - **Orders hold stock.** Adding an item to a pending order takes the stock straight away, and lowering, removing or cancelling gives it back. The unit price is fixed when the item is added. Shipped and delivered orders are kept as a record and can't be deleted, but take customer returns, which put the units back in stock without going past what was sold, and a retried create with the same `Idempotency-Key` returns the first order instead of making a second.
 - **Restocking is a draft, not a surprise.** Each product is bought from a supplier or made in-house, with a reorder point and quantity. Restock (or Restock all) adds the reorder quantity to that supplier's draft purchase order or plans a production run, and counts what's already on order, so nothing is bought or made until you say so.
 - **Deliveries can come in parts.** A purchase order is received in as many parts as arrive, each part adds stock and updates the product's unit cost, and the rest of a line (or the whole order) can be closed when it won't come. It prints as a clean page for the supplier.
@@ -35,7 +36,7 @@ Inventix is an inventory app for a small business run from one computer: a Sprin
 1. **Start the backend.** `.\gradlew.bat bootRun` from the repository (see [Quick start](#quick-start)). The first start adds five sample products so the screens aren't empty.
 2. **Open the app.** `npm run dev` in `desktop\` opens the window. The light at the bottom of the sidebar says whether it reached the backend.
 3. **Set up what you sell.** In Products, give each product a category, a unit cost, and under Restocking whether it's bought (and from which supplier) or made, with its reorder point and quantity. Made products get their components from the Components button.
-4. **Sell and restock.** Take customer orders in Orders. When the dashboard's Reorder card lists a product, press Restock, then review and send the draft in Purchase orders, or complete the planned run in Production.
+4. **Sell and restock.** Add your customers in Customers and take their orders in Orders. When the dashboard's Reorder card lists a product, press Restock, then review and send the draft in Purchase orders, or complete the planned run in Production.
 5. **Look back.** Reports shows value and movement for any range of days, and each product's History lists every change to its stock.
 
 <br clear="right" />
@@ -47,6 +48,8 @@ Inventix is an inventory app for a small business run from one computer: a Sprin
 | See every change to a product's stock | History, on the product |
 | Manage categories, or filter products by one | Categories, and the category filter, in Products |
 | Take an order, change items, ship, deliver or cancel | Orders |
+| Add, edit or find customers, or see one customer's orders | Customers (Orders, on the customer) |
+| Set or change who an order is for | The customer picker in New order, or Change on the order |
 | Put items a customer sent back into stock | Return items, on a shipped or delivered order |
 | See what needs reordering and fill drafts for it | The dashboard's Reorder card: Restock or Restock all |
 | Send, receive, close, cancel or print a purchase order | Purchase orders |
@@ -134,12 +137,13 @@ The backend owns every rule: the window only shows what the API returns and send
 | `service/impl/RestockServiceImpl.java` | The reorder list and Restock |
 | `service/impl/ReportServiceImpl.java`, `export/CsvWriter.java` | Stock value, movements and top sellers; CSV with a byte order mark for Excel |
 | `service/impl/BackupServiceImpl.java` | Backups to `.zip` and scheduling a restore |
+| `service/impl/CustomerServiceImpl.java` | Customers, and refusing to delete one that has orders |
 | `service/impl/CategoryServiceImpl.java`, `SupplierServiceImpl.java`, `StockMovementServiceImpl.java` | Categories, suppliers, reading the ledger |
 | `controller/`, `dto/` | The REST endpoints under `/api` and their request and response records |
 | `exception/GlobalExceptionHandler.java` | Turns every exception into the JSON error body |
-| `src/main/resources/db/migration/` | Flyway migrations `V1` to `V8` |
+| `src/main/resources/db/migration/` | Flyway migrations `V1` to `V9` |
 | `desktop/src/js/main.js`, `api.js`, `ui.js`, `helpers.js` | Routing and the connection light; every endpoint; toasts, dialogs and formatting; pure helpers the tests cover |
-| `desktop/src/js/dashboard.js`, `products.js`, `orders.js`, `purchase-orders.js`, `production.js`, `suppliers.js`, `reports.js`, `settings.js` | One file per screen |
+| `desktop/src/js/dashboard.js`, `products.js`, `orders.js`, `customers.js`, `purchase-orders.js`, `production.js`, `suppliers.js`, `reports.js`, `settings.js` | One file per screen |
 | `desktop/scripts/dev-server.js` | The dependency-free UI server on port 1420 |
 
 All Java packages are under `src/main/java/com/example/inventix`.
@@ -184,7 +188,7 @@ Settings live in `src/main/resources/application.properties`, with a comment on 
 
 ## Data
 
-Everything is kept in a per-user folder, whatever folder the backend is started from: `%LOCALAPPDATA%\Inventix` on Windows, `~/Library/Application Support/Inventix` on macOS and `$XDG_DATA_HOME/inventix` (or `~/.local/share/inventix`) on Linux, all shown in the window's Settings. It holds `data/inventix.mv.db` (the H2 database, which only one process may open at a time, so use the H2 console or a backup rather than opening or copying the file while the backend runs) and `backups/inventix-backup-<yyyyMMdd-HHmmss>.zip` (from Back up now or `POST /api/backup`, safe while the app is in use and never deleted automatically) and `backups/inventix-auto-<yyyyMMdd-HHmmss>.zip` (made by the backend when the newest is a day old and when it shuts down, with only the newest 14 kept). Restoring writes `data/restore-pending.txt`; on the next start, before the database opens, the backup is put in place and the database it replaces is kept as `data/inventix-before-restore-<timestamp>.mv.db`, and until then the restore can be cancelled. Older versions kept the database in `./data` under the start folder: on the first start from there, it's copied (not moved) to the new folder and the log says so, and old backups stay where they were. The schema is built by Flyway migrations `V1` to `V8` in `src/main/resources/db/migration`, which also bring a restored older backup up to date, and Hibernate only checks that the entities match it. H2 is pinned to 2.4.240, which also opens databases and backups from the 2.2.224 that earlier versions used. It's pinned rather than left to Spring Boot because some H2 versions change the file format, and crossing such a change needs an export and re-import ([O-13 in the review](docs/REVIEW.md#o-13-h2-file-format-changes-on-upgrade)).
+Everything is kept in a per-user folder, whatever folder the backend is started from: `%LOCALAPPDATA%\Inventix` on Windows, `~/Library/Application Support/Inventix` on macOS and `$XDG_DATA_HOME/inventix` (or `~/.local/share/inventix`) on Linux, all shown in the window's Settings. It holds `data/inventix.mv.db` (the H2 database, which only one process may open at a time, so use the H2 console or a backup rather than opening or copying the file while the backend runs) and `backups/inventix-backup-<yyyyMMdd-HHmmss>.zip` (from Back up now or `POST /api/backup`, safe while the app is in use and never deleted automatically) and `backups/inventix-auto-<yyyyMMdd-HHmmss>.zip` (made by the backend when the newest is a day old and when it shuts down, with only the newest 14 kept). Restoring writes `data/restore-pending.txt`; on the next start, before the database opens, the backup is put in place and the database it replaces is kept as `data/inventix-before-restore-<timestamp>.mv.db`, and until then the restore can be cancelled. Older versions kept the database in `./data` under the start folder: on the first start from there, it's copied (not moved) to the new folder and the log says so, and old backups stay where they were. The schema is built by Flyway migrations `V1` to `V9` in `src/main/resources/db/migration`, which also bring a restored older backup up to date, and Hibernate only checks that the entities match it. H2 is pinned to 2.4.240, which also opens databases and backups from the 2.2.224 that earlier versions used. It's pinned rather than left to Spring Boot because some H2 versions change the file format, and crossing such a change needs an export and re-import ([O-13 in the review](docs/REVIEW.md#o-13-h2-file-format-changes-on-upgrade)).
 
 ### Server mode
 

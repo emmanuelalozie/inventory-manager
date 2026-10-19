@@ -15,6 +15,7 @@ import com.example.inventix.model.Supplier;
 import com.example.inventix.repository.ProductRepository;
 import com.example.inventix.service.impl.CategoryServiceImpl;
 import com.example.inventix.service.impl.OrderItemServiceImpl;
+import com.example.inventix.service.impl.CustomerServiceImpl;
 import com.example.inventix.service.impl.OrderServiceImpl;
 import com.example.inventix.service.impl.ProductServiceImpl;
 import com.example.inventix.service.impl.PurchaseOrderServiceImpl;
@@ -42,7 +43,7 @@ import static org.assertj.core.api.Assertions.tuple;
  */
 @DataJpaTest
 @Import({ProductServiceImpl.class, CategoryServiceImpl.class, SupplierServiceImpl.class, PurchaseOrderServiceImpl.class,
-        OrderServiceImpl.class, OrderItemServiceImpl.class, StockMovementServiceImpl.class, ReportServiceImpl.class})
+        OrderServiceImpl.class, CustomerServiceImpl.class, OrderItemServiceImpl.class, StockMovementServiceImpl.class, ReportServiceImpl.class})
 class ReportIntegrationTest {
 
     @Autowired

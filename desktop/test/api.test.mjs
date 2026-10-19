@@ -10,6 +10,7 @@ import {
   MOVEMENTS_PAGE_SIZE,
   LIST_PAGE_SIZE,
   backupApi,
+  customersApi,
   exportApi,
   fileNameFrom,
   newIdempotencyKey,
@@ -248,6 +249,36 @@ test("purchaseOrdersApi.cancelRemaining and productsApi.setComponents hit the ri
   ]);
 });
 
+
+test("customersApi.list sends the search text only when there is one", async (t) => {
+  const calls = mockFetch(t, { body: [] });
+
+  await customersApi.list("ann lee");
+  await customersApi.list();
+
+  assert.equal(calls[0].url, `${DEFAULT_BASE_URL}/api/customers?q=ann+lee`);
+  assert.equal(calls[1].url, `${DEFAULT_BASE_URL}/api/customers`);
+});
+
+test("ordersApi sends the customer on create, in the list filter and when changing it", async (t) => {
+  const calls = mockFetch(t, { body: { id: 1 } });
+
+  await ordersApi.create([{ productId: 1, quantity: 2 }], undefined, 7);
+  await ordersApi.create([]);
+  await ordersApi.setCustomer(5, 7);
+  await ordersApi.setCustomer(5, null);
+  await ordersApi.search({ customerId: 7, size: 10 });
+
+  assert.deepEqual(calls[0].body, { customerId: 7, items: [{ productId: 1, quantity: 2 }] });
+  assert.deepEqual(calls[1].body, { items: [] });
+  assert.deepEqual(calls[2], {
+    url: `${DEFAULT_BASE_URL}/api/orders/5/customer`,
+    method: "PATCH",
+    body: { customerId: 7 },
+  });
+  assert.deepEqual(calls[3].body, { customerId: null });
+  assert.equal(calls[4].url, `${DEFAULT_BASE_URL}/api/orders?customerId=7&page=0&size=10`);
+});
 
 test("ordersApi posts returns and reads what can still be returned", async (t) => {
   const calls = mockFetch(t, { body: { orderId: 4, lines: [] } });

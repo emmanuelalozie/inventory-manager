@@ -99,6 +99,8 @@ fields, so leaving them out clears them (and `source` falls back to `BUY`).
 {
   "id": 1,
   "status": "PENDING",
+  "customerId": 3,
+  "customerName": "Harbor Cafe",
   "totalAmount": 139.48,
   "createdAt": "2026-10-04T10:20:00.000001",
   "updatedAt": "2026-10-04T10:20:00.000002",
@@ -110,6 +112,7 @@ fields, so leaving them out clears them (and `source` falls back to `BUY`).
 |---|---|---|
 | `id` | number | |
 | `status` | string | One of the `OrderStatus` values below. New orders are always `PENDING`. |
+| `customerId`, `customerName` | number, string | The customer the order is for, or both `null` for an order without one |
 | `totalAmount` | number | The sum of `subtotal` over all `orderItems`. Recalculated by the server whenever items change. |
 | `createdAt`, `updatedAt` | string | Set by the server |
 | `orderItems` | array of OrderItem | Empty array if the order has no items |
@@ -297,10 +300,11 @@ For nested fields, `field` uses paths like `items[0].quantity`.
 | DELETE | `/api/products/{id}` | 204 | Delete a product and its movements |
 | GET | `/api/products/{id}/movements` | 200 | A product's stock movements, newest first |
 | GET | `/api/stock-movements` | 200 | All stock movements, newest first (optional `?productId=&reason=&from=&to=`) |
-| GET | `/api/orders` | 200 | List orders, newest first (optional `?status=&page=&size=`) |
+| GET | `/api/orders` | 200 | List orders, newest first (optional `?status=&customerId=&page=&size=`) |
 | GET | `/api/orders/{id}` | 200 | Get one order with its items |
 | POST | `/api/orders` | 201 | Create an order, optionally with items |
 | PUT | `/api/orders/{id}` | 200 | Replace all items of a `PENDING` order |
+| PATCH | `/api/orders/{id}/customer` | 200 | Set or clear an order's customer, in any status |
 | PATCH | `/api/orders/{id}/status` | 200 | Change an order's status |
 | GET | `/api/orders/{id}/returns` | 200 | Units sold, returned and still returnable per product |
 | POST | `/api/orders/{id}/returns` | 200 | Put units a customer sent back into stock |
@@ -313,6 +317,11 @@ For nested fields, `field` uses paths like `items[0].quantity`.
 | GET | `/api/backup` | 200 | Data and backup folders, backups, pending restore |
 | POST | `/api/backup/restore` | 200 | Restore a backup on the next start |
 | DELETE | `/api/backup/restore` | 200 | Cancel a pending restore |
+| GET | `/api/customers` | 200 | List customers by name (optional `?q=`) |
+| GET | `/api/customers/{id}` | 200 | Get one customer |
+| POST | `/api/customers` | 201 | Create a customer |
+| PUT | `/api/customers/{id}` | 200 | Replace a customer's fields |
+| DELETE | `/api/customers/{id}` | 204 | Delete a customer that has no orders |
 | GET | `/api/suppliers` | 200 | List suppliers by name |
 | GET | `/api/suppliers/{id}` | 200 | Get one supplier |
 | POST | `/api/suppliers` | 201 | Create a supplier |
@@ -618,7 +627,7 @@ Cancels a scheduled restore. **200** with the backup status.
 #### `GET /api/orders`
 
 Returns orders newest first (highest `id` first). Optional query parameter `status` (`PENDING`, `SHIPPED`,
-`DELIVERED` or `CANCELLED`) returns only orders with that status. `page` (0-based) and `size` (1–500) work as for
+`DELIVERED` or `CANCELLED`) returns only orders with that status, and `customerId` only that customer's orders. `page` (0-based) and `size` (1–500) work as for
 `GET /api/products`; without both, every match is returned. `X-Total-Count` holds the number of matching orders.
 
 - **200**: `Order[]` (each order includes its `orderItems`)
@@ -631,8 +640,8 @@ Returns orders newest first (highest `id` first). Optional query parameter `stat
 
 #### `POST /api/orders`
 
-Creates a `PENDING` order and adds the given items, reserving their stock. `items` can be omitted or left
-empty to create an empty order. If any item fails (unknown product, not enough stock), the whole request
+Creates a `PENDING` order for the given customer (optional) and adds the given items, reserving their stock.
+`items` can be omitted or left empty to create an empty order. If the customer or any item fails (unknown product, not enough stock), the whole request
 fails and nothing is created.
 
 **Retries:** send an `Idempotency-Key` header (any unique string up to 100 characters, e.g. a UUID) and reuse it
@@ -645,6 +654,7 @@ Request:
 
 ```json
 {
+  "customerId": 3,
   "items": [
     { "productId": 1, "quantity": 2 },
     { "productId": 2, "quantity": 1 }
@@ -654,6 +664,7 @@ Request:
 
 | Field | Rules |
 |---|---|
+| `customerId` | Optional. Leave it out (or `null`) for an order without a customer. |
 | `items` | Optional array. Must not contain `null`. |
 | `items[].productId` | Required |
 | `items[].quantity` | Required, > 0 |
@@ -684,7 +695,7 @@ Request:
 ```
 
 - **400**: validation failed (e.g. `fieldErrors: [{ "field": "items[0].quantity", "message": "quantity must be greater than 0" }]`)
-- **404**: a `productId` doesn't exist
+- **404**: the `customerId` or a `productId` doesn't exist
 - **409**: not enough stock for one of the items
 
 #### `PUT /api/orders/{id}`
@@ -692,12 +703,23 @@ Request:
 Replaces **all** items of a `PENDING` order. Stock for the old items is given back, then stock for the new
 items is reserved. Sending `{"items": []}` empties the order. If any new item fails, nothing changes.
 
-Request: same body as `POST /api/orders`.
+Request: same body as `POST /api/orders`. `customerId` is ignored here and the order keeps its customer; use
+`PATCH /api/orders/{id}/customer` to change it.
 
 - **200**: the updated `Order`
 - **400**: validation failed
 - **404**: no order with that id, or a `productId` doesn't exist
 - **409**: the order isn't `PENDING`, or there isn't enough stock
+
+#### `PATCH /api/orders/{id}/customer`
+
+Sets the customer of an order, or clears it with `null`. Works in every status, because it only corrects who the
+order is for: items, stock and status don't change.
+
+Request: `{ "customerId": 3 }` or `{ "customerId": null }`.
+
+- **200**: the updated `Order`
+- **404**: no order with that id, or the `customerId` doesn't exist
 
 #### `GET /api/orders/{id}/returns` and `POST /api/orders/{id}/returns`
 
@@ -831,6 +853,23 @@ Removes the item, gives its stock back and updates the order's `totalAmount`.
 - **204**: removed, no body
 - **404**: no order with that id, no item with that id, or the item belongs to a different order
 - **409**: the order isn't `PENDING`
+
+### Customers
+
+A customer: `{ "id": 3, "name": "Harbor Cafe", "email": "orders@harborcafe.example", "phone": "555-0142",
+"address": "12 Pier Road, Portland", "notes": null, "createdAt": "...", "updatedAt": null, "version": 0 }`.
+
+Requests (`POST`, `PUT`) take `name` (required, max 255; two customers may share a name), `email` (optional, must be
+an email address), `phone` (optional, max 50), `address` (optional, max 1000), `notes` (optional, max 1000) and, on
+`PUT`, an optional `version`. Blank optional fields are stored as `null`.
+
+- `GET /api/customers`: **200**, customers by name. `q` returns only those whose name, email or phone contains it,
+  ignoring case.
+- `GET /api/customers/{id}`: **200**; **404**
+- `POST /api/customers`: **201** with `Location`; **400** for a missing name or bad email
+- `PUT /api/customers/{id}`: **200**; **404**; **409** if `version` is stale
+- `DELETE /api/customers/{id}`: **204**; **404**; **409** while any order is for the customer (orders are kept as a
+  record; clear or change the order's customer first, or keep the customer)
 
 ### Suppliers
 

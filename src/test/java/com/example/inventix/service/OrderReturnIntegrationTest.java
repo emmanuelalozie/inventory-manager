@@ -12,6 +12,7 @@ import com.example.inventix.model.OrderStatus;
 import com.example.inventix.model.Product;
 import com.example.inventix.model.StockMovement;
 import com.example.inventix.repository.StockMovementRepository;
+import com.example.inventix.service.impl.CustomerServiceImpl;
 import com.example.inventix.service.impl.OrderItemServiceImpl;
 import com.example.inventix.service.impl.OrderReturnServiceImpl;
 import com.example.inventix.service.impl.OrderServiceImpl;
@@ -34,7 +35,8 @@ import static org.assertj.core.api.Assertions.tuple;
  * take back more than it sold.
  */
 @DataJpaTest
-@Import({ProductServiceImpl.class, OrderItemServiceImpl.class, OrderServiceImpl.class, OrderReturnServiceImpl.class})
+@Import({ProductServiceImpl.class, OrderItemServiceImpl.class, OrderServiceImpl.class, OrderReturnServiceImpl.class,
+        CustomerServiceImpl.class})
 class OrderReturnIntegrationTest {
 
     @Autowired
