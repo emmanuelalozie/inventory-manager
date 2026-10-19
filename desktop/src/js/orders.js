@@ -1,9 +1,11 @@
-// Orders view: list, create, details with items, add/change/remove items, status changes, customer returns, delete.
+// Orders view: list, create, details with items, add/change/remove items, customer, status changes, printing,
+// customer returns, delete.
 
 import {
   ApiError,
   ORDER_STATUSES,
   STATUS_TRANSITIONS,
+  customersApi,
   newIdempotencyKey,
   ordersApi,
   productsApi,
@@ -49,6 +51,8 @@ let total = 0;
 let nextPage = 0;
 let loadRequest = 0; // ignores responses to a filter that was replaced by a newer one
 let statusFilter = "";
+let customerFilter = ""; // a customer id, or "" for all
+let customerList = []; // for the filter and the pickers, by name
 let currentOrder = null;
 let pickerProducts = [];
 let currentReturns = null; // what was sold and returned per product, for shipped and delivered orders
@@ -66,6 +70,12 @@ export function initOrders() {
     ORDER_STATUSES.map((s) => `<option value="${s}">${s.charAt(0)}${s.slice(1).toLowerCase()}</option>`).join("");
   filter.addEventListener("change", () => {
     statusFilter = filter.value;
+    loadOrders();
+  });
+
+  const customerSelect = document.getElementById("orders-customer-filter");
+  customerSelect.addEventListener("change", () => {
+    customerFilter = customerSelect.value;
     loadOrders();
   });
 
@@ -94,6 +104,11 @@ export function initOrders() {
   detailPanel().addEventListener("submit", onDetailSubmit);
 }
 
+/** Makes the order list show only this customer's orders the next time it is shown. */
+export function filterOrdersByCustomer(customerId) {
+  customerFilter = String(customerId);
+}
+
 /** Shows the order list, or the details of one order when orderId is given. */
 export function showOrders(orderId) {
   if (orderId) {
@@ -106,7 +121,39 @@ export function showOrders(orderId) {
   detailPanel().hidden = true;
   detailPanel().innerHTML = "";
   listPanel().hidden = false;
+  loadCustomerFilter();
   return loadOrders();
+}
+
+function customerOptions(selectedId, emptyLabel) {
+  const selected = selectedId == null ? "" : String(selectedId);
+  return (
+    `<option value="">${escapeHtml(emptyLabel)}</option>` +
+    customerList
+      .map((c) => {
+        const detail = c.email || c.phone;
+        const label = detail ? `${c.name} (${detail})` : c.name;
+        return `<option value="${escapeHtml(c.id)}"${String(c.id) === selected ? " selected" : ""}>${escapeHtml(label)}</option>`;
+      })
+      .join("")
+  );
+}
+
+async function loadCustomers() {
+  customerList = await customersApi.list();
+  return customerList;
+}
+
+// Fills the customer filter. A failure leaves the filter as it was; the list itself still loads.
+async function loadCustomerFilter() {
+  const select = document.getElementById("orders-customer-filter");
+  try {
+    await loadCustomers();
+  } catch {
+    return;
+  }
+  if (customerFilter && !customerList.some((c) => String(c.id) === customerFilter)) customerFilter = "";
+  select.innerHTML = customerOptions(customerFilter, "All customers");
 }
 
 function goToOrder(id) {
@@ -125,7 +172,11 @@ async function loadOrders({ more = false } = {}) {
   if (more && moreButton) moreButton.disabled = true;
   if (!more && !orders.length) renderPlaceholder(tableEl(), "loading", "Loading orders…");
   try {
-    const result = await ordersApi.search({ status: statusFilter || undefined, page });
+    const result = await ordersApi.search({
+      status: statusFilter || undefined,
+      customerId: customerFilter || undefined,
+      page,
+    });
     if (requestId !== loadRequest) return;
     orders = more ? [...orders, ...result.items] : result.items;
     total = result.total;
@@ -160,7 +211,9 @@ function renderList() {
     renderPlaceholder(
       tableEl(),
       "empty",
-      statusFilter ? `No ${statusFilter.toLowerCase()} orders.` : "No orders yet. Click “New order” to create one."
+      statusFilter || customerFilter
+        ? "No orders match the filters."
+        : "No orders yet. Click “New order” to create one."
     );
     return;
   }
@@ -170,6 +223,7 @@ function renderList() {
       (o) => `
       <tr class="clickable" data-id="${escapeHtml(o.id)}">
         <td><strong>#${escapeHtml(o.id)}</strong></td>
+        <td>${o.customerName ? escapeHtml(o.customerName) : `<span class="muted">—</span>`}</td>
         <td class="hide-narrow">${escapeHtml(formatDateTime(o.createdAt))}</td>
         <td>${itemSummary(o)}</td>
         <td class="num">${formatMoney(o.totalAmount)}</td>
@@ -191,7 +245,7 @@ function renderList() {
       <table class="table">
         <thead>
           <tr>
-            <th>Order</th><th class="hide-narrow">Created</th><th>Items</th><th class="num">Total</th><th>Status</th>
+            <th>Order</th><th>Customer</th><th class="hide-narrow">Created</th><th>Items</th><th class="num">Total</th><th>Status</th>
             <th class="row-actions"><span class="sr-only">Actions</span></th>
           </tr>
         </thead>
@@ -212,7 +266,7 @@ function renderList() {
 async function openNewOrderDialog() {
   let available;
   try {
-    available = await productsApi.list();
+    [available] = await Promise.all([productsApi.list(), loadCustomers()]);
   } catch (error) {
     showError(error, "Could not load products for the new order");
     return;
@@ -220,14 +274,18 @@ async function openNewOrderDialog() {
 
   const byId = new Map(available.map((p) => [String(p.id), p]));
   const lines = new Map(); // productId -> quantity
-  // Resubmitting the same items (e.g. after a timeout) reuses the key, so the backend can't create the order twice.
-  let submitted = { items: null, key: null };
+  // Resubmitting the same order (e.g. after a timeout) reuses the key, so the backend can't create it twice.
+  let submitted = { order: null, key: null };
 
   const created = await openDialog({
     title: "New order",
     submitLabel: "Create order",
     wide: true,
     body: `
+      <label class="field field-spaced">
+        <span class="field-label">Customer</span>
+        <select name="customerId">${customerOptions(customerFilter, "No customer")}</select>
+      </label>
       <div class="line-builder">
         <label class="field grow">
           <span class="field-label">Product</span>
@@ -333,11 +391,12 @@ async function openNewOrderDialog() {
         productId: Number(productId),
         quantity,
       }));
-      const itemsJson = JSON.stringify(items);
-      if (submitted.items !== itemsJson) {
-        submitted = { items: itemsJson, key: newIdempotencyKey() };
+      const customerId = form.elements.customerId.value ? Number(form.elements.customerId.value) : undefined;
+      const orderJson = JSON.stringify({ customerId, items });
+      if (submitted.order !== orderJson) {
+        submitted = { order: orderJson, key: newIdempotencyKey() };
       }
-      return ordersApi.create(items, submitted.key);
+      return ordersApi.create(items, submitted.key, customerId);
     },
   });
 
@@ -462,12 +521,22 @@ function renderDetail() {
     <div class="view-header">
       <div>
         <h1>Order #${escapeHtml(order.id)} ${statusBadge(order.status)}</h1>
+        <p class="order-customer">
+          ${order.customerName ? `For <strong>${escapeHtml(order.customerName)}</strong>` : `<span class="muted">No customer</span>`}
+          <button type="button" class="button button-small" data-action="change-customer">${order.customerId ? "Change" : "Set customer"}</button>
+        </p>
         <p class="muted">Created ${escapeHtml(formatDateTime(order.createdAt))}${
           order.updatedAt ? ` · Updated ${escapeHtml(formatDateTime(order.updatedAt))}` : ""
         }</p>
       </div>
       <div class="actions">
         ${statusButtons}
+        ${
+          items.length
+            ? `<button type="button" class="button" data-action="print-slip">Packing slip</button>
+               <button type="button" class="button" data-action="print-order">Print order</button>`
+            : ""
+        }
         ${canReturn ? `<button type="button" class="button" data-action="return-items">Return items</button>` : ""}
         <button type="button" class="button" data-action="refresh">Refresh</button>
         ${canDelete(order) ? `<button type="button" class="button button-danger" data-action="delete-order">Delete</button>` : ""}
@@ -506,6 +575,15 @@ async function onDetailClick(event) {
       break;
     case "status":
       changeStatus(order, button.dataset.status);
+      break;
+    case "change-customer":
+      changeCustomer(order);
+      break;
+    case "print-slip":
+      printOrder(order, { prices: false });
+      break;
+    case "print-order":
+      printOrder(order, { prices: true });
       break;
     case "return-items":
       returnItems(order);
@@ -602,6 +680,95 @@ async function removeItem(order, itemId) {
     showError(error, "Could not remove the item");
   }
   await loadOrderDetail(order.id, { quiet: true });
+}
+
+async function changeCustomer(order) {
+  try {
+    await loadCustomers();
+  } catch (error) {
+    showError(error, "Could not load customers");
+    return;
+  }
+  if (!customerList.length) {
+    toast("Add a customer in Customers first.");
+    return;
+  }
+  const updated = await openDialog({
+    title: `Customer for order #${order.id}`,
+    submitLabel: "Save",
+    body: `
+      <label class="field">
+        <span class="field-label">Customer</span>
+        <select name="customerId">${customerOptions(order.customerId, "No customer")}</select>
+      </label>
+      <p class="hint">Changing the customer doesn't change the items, stock or status.</p>`,
+    onSubmit(form) {
+      const value = form.elements.customerId.value;
+      return ordersApi.setCustomer(order.id, value ? Number(value) : null);
+    },
+  });
+  if (updated) {
+    toast(updated.customerName ? `Order #${order.id} is now for ${updated.customerName}` : `Removed the customer from order #${order.id}`, {
+      type: "success",
+    });
+    loadOrderDetail(order.id, { quiet: true });
+  }
+}
+
+/**
+ * Prints the order: a packing slip (products and quantities, to go in the box) or, with prices, a copy of the
+ * order with unit prices and the total, for the customer.
+ */
+async function printOrder(order, { prices }) {
+  let customer = null;
+  if (order.customerId) {
+    try {
+      customer = await customersApi.get(order.customerId);
+    } catch {
+      // Print with the name only.
+    }
+  }
+  const items = order.orderItems || [];
+  const units = items.reduce((sum, item) => sum + Number(item.quantity || 0), 0);
+  const rows = items
+    .map(
+      (item) => `
+      <tr>
+        <td>${escapeHtml(item.productSku)}</td>
+        <td>${escapeHtml(item.productName)}</td>
+        <td class="num">${escapeHtml(formatNumber(item.quantity))}</td>
+        ${prices ? `<td class="num">${formatMoney(item.pricePerUnit)}</td><td class="num">${formatMoney(item.subtotal)}</td>` : `<td class="check"></td>`}
+      </tr>`
+    )
+    .join("");
+  const contact = customer
+    ? [customer.address, customer.email, customer.phone].filter(Boolean).map((line) => escapeHtml(line))
+    : [];
+  const customerBlock = order.customerName
+    ? `<h2>${prices ? "Customer" : "Ship to"}</h2>
+       <p class="print-address"><strong>${escapeHtml(order.customerName)}</strong>${contact.map((line) => `<br>${line}`).join("")}</p>`
+    : "";
+  const area = document.getElementById("print-area");
+  area.innerHTML = `
+    <h1>${prices ? "Order" : "Packing slip"} #${escapeHtml(order.id)}</h1>
+    <p>Date: ${escapeHtml(formatDateTime(order.createdAt))} · Status: ${escapeHtml(order.status.charAt(0) + order.status.slice(1).toLowerCase())}</p>
+    ${customerBlock}
+    <table>
+      <thead>
+        <tr><th>SKU</th><th>Product</th><th class="num">Quantity</th>${
+          prices ? `<th class="num">Unit price</th><th class="num">Subtotal</th>` : `<th class="check">Packed</th>`
+        }</tr>
+      </thead>
+      <tbody>${rows}</tbody>
+      <tfoot>
+        ${
+          prices
+            ? `<tr><td colspan="4" class="num">Total</td><td class="num">${formatMoney(order.totalAmount)}</td></tr>`
+            : `<tr><td colspan="2" class="num">Total units</td><td class="num">${escapeHtml(formatNumber(units))}</td><td></td></tr>`
+        }
+      </tfoot>
+    </table>`;
+  window.print();
 }
 
 function takesReturns(order) {

@@ -13,33 +13,37 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
-// Orders are always loaded together with their items and products: the controllers map them to DTOs
+// Orders are always loaded together with their customer, items and products: the controllers map them to DTOs
 // after the transaction has ended (open-in-view is off), so a lazy orderItems list would fail there.
 public interface OrderRepository extends JpaRepository<Order, Long> {
 
     @Override
-    @EntityGraph(attributePaths = {"orderItems", "orderItems.product"})
+    @EntityGraph(attributePaths = {"customer", "orderItems", "orderItems.product"})
     Optional<Order> findById(Long id);
 
     @Override
-    @EntityGraph(attributePaths = {"orderItems", "orderItems.product"})
+    @EntityGraph(attributePaths = {"customer", "orderItems", "orderItems.product"})
     List<Order> findAll();
 
-    @EntityGraph(attributePaths = {"orderItems", "orderItems.product"})
+    @EntityGraph(attributePaths = {"customer", "orderItems", "orderItems.product"})
     List<Order> findByStatus(OrderStatus status);
 
-    @EntityGraph(attributePaths = {"orderItems", "orderItems.product"})
+    @EntityGraph(attributePaths = {"customer", "orderItems", "orderItems.product"})
     Optional<Order> findByIdempotencyKey(String idempotencyKey);
 
+    boolean existsByCustomerId(Long customerId);
+
     /**
-     * One page of order ids, optionally filtered by status. Paging ids first and then loading those orders with
+     * One page of order ids, optionally filtered by status and customer. Paging ids first and then loading those orders with
      * {@link #findByIdIn} keeps the LIMIT in the database; paging a fetch join of the items would load every
      * order into memory.
      */
-    @Query(value = "select o.id from Order o where :status is null or o.status = :status",
-            countQuery = "select count(o) from Order o where :status is null or o.status = :status")
-    Page<Long> findIds(@Param("status") OrderStatus status, Pageable pageable);
+    @Query(value = "select o.id from Order o"
+            + " where (:status is null or o.status = :status) and (:customerId is null or o.customer.id = :customerId)",
+            countQuery = "select count(o) from Order o"
+            + " where (:status is null or o.status = :status) and (:customerId is null or o.customer.id = :customerId)")
+    Page<Long> findIds(@Param("status") OrderStatus status, @Param("customerId") Long customerId, Pageable pageable);
 
-    @EntityGraph(attributePaths = {"orderItems", "orderItems.product"})
+    @EntityGraph(attributePaths = {"customer", "orderItems", "orderItems.product"})
     List<Order> findByIdIn(Collection<Long> ids);
 }

@@ -7,6 +7,7 @@ import com.example.inventix.model.Order;
 import com.example.inventix.model.OrderItem;
 import com.example.inventix.model.OrderStatus;
 import com.example.inventix.repository.OrderRepository;
+import com.example.inventix.service.CustomerService;
 import com.example.inventix.service.OrderItemService;
 import com.example.inventix.service.OrderService;
 import com.example.inventix.service.Paging;
@@ -32,19 +33,22 @@ public class OrderServiceImpl implements OrderService {
     private final OrderRepository orderRepository;
     private final OrderItemService orderItemService;
     private final ProductService productService;
+    private final CustomerService customerService;
 
     @Autowired
     public OrderServiceImpl(OrderRepository orderRepository,
                             OrderItemService orderItemService,
-                            ProductService productService) {
+                            ProductService productService,
+                            CustomerService customerService) {
         this.orderRepository = orderRepository;
         this.orderItemService = orderItemService;
         this.productService = productService;
+        this.customerService = customerService;
     }
 
     @Override
     public Order createOrder(Order order) {
-        // Only the idempotency key is kept from the caller; everything else starts fresh.
+        // Only the idempotency key and customer are kept from the caller; everything else starts fresh.
         order.setId(null);
         order.setStatus(OrderStatus.PENDING);
         order.setOrderItems(new ArrayList<>()); // Items are added through OrderItemService so stock is reserved
@@ -59,6 +63,19 @@ public class OrderServiceImpl implements OrderService {
             orderItems.forEach(item -> orderItemService.createOrderItem(savedOrder.getId(), item));
         }
         return getOrderById(savedOrder.getId()); // Return the updated order
+    }
+
+    @Override
+    public Order createOrderWithItems(Order order, Long customerId, List<OrderItem> orderItems) {
+        order.setCustomer(customerId == null ? null : customerService.getCustomer(customerId));
+        return createOrderWithItems(order, orderItems);
+    }
+
+    @Override
+    public Order setOrderCustomer(Long id, Long customerId) {
+        Order order = getOrderById(id);
+        order.setCustomer(customerId == null ? null : customerService.getCustomer(customerId));
+        return orderRepository.save(order);
     }
 
     @Override
@@ -128,8 +145,8 @@ public class OrderServiceImpl implements OrderService {
     }
 
     @Override
-    public Page<Order> searchOrders(OrderStatus status, Integer page, Integer size) {
-        Page<Long> ids = orderRepository.findIds(status, Paging.pageable(page, size, Sort.by(Sort.Direction.DESC, "id")));
+    public Page<Order> searchOrders(OrderStatus status, Long customerId, Integer page, Integer size) {
+        Page<Long> ids = orderRepository.findIds(status, customerId, Paging.pageable(page, size, Sort.by(Sort.Direction.DESC, "id")));
         Map<Long, Order> byId = orderRepository.findByIdIn(ids.getContent()).stream()
                 .collect(Collectors.toMap(Order::getId, Function.identity()));
         // findByIdIn doesn't keep the page's order, so map the ids back to orders in page order.

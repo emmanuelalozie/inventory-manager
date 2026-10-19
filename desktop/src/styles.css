@@ -1285,6 +1285,21 @@ textarea.invalid {
   #print-area .num {
     text-align: right;
   }
+
+  /* An empty box to tick on a packing slip */
+  #print-area td.check::before {
+    content: "";
+    display: inline-block;
+    width: 0.9rem;
+    height: 0.9rem;
+    border: 1px solid #000;
+  }
+
+  #print-area th.check,
+  #print-area td.check {
+    text-align: center;
+    width: 4.5rem;
+  }
 }
 
 
@@ -1310,6 +1325,24 @@ textarea.invalid {
 
 .text-danger {
   color: var(--danger);
+}
+
+/* The customer line on an order's details */
+.order-customer {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0.25rem 0 0.15rem;
+}
+
+/* A field on its own above another block in a dialog */
+.field-spaced {
+  margin-bottom: 0.9rem;
+}
+
+/* Customer names with an email can be long; keep the filter from crowding the header */
+#orders-customer-filter {
+  max-width: 220px;
 }
 
 /* Quantity boxes in the Return items dialog */

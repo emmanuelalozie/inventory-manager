@@ -10,6 +10,7 @@ import com.example.inventix.repository.OrderRepository;
 import com.example.inventix.repository.ProductRepository;
 import com.example.inventix.repository.StockMovementRepository;
 import com.example.inventix.service.impl.OrderItemServiceImpl;
+import com.example.inventix.service.impl.CustomerServiceImpl;
 import com.example.inventix.service.impl.OrderServiceImpl;
 import com.example.inventix.service.impl.ProductServiceImpl;
 import org.junit.jupiter.api.AfterEach;
@@ -33,7 +34,7 @@ import static org.assertj.core.api.Assertions.tuple;
  * on its own and a lazily loaded orderItems list would throw LazyInitializationException during mapping.
  */
 @DataJpaTest
-@Import({ProductServiceImpl.class, OrderItemServiceImpl.class, OrderServiceImpl.class})
+@Import({ProductServiceImpl.class, OrderItemServiceImpl.class, OrderServiceImpl.class, CustomerServiceImpl.class})
 @Transactional(propagation = Propagation.NOT_SUPPORTED)
 class OrderResponseMappingTest {
 

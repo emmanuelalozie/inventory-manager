@@ -15,6 +15,20 @@ public interface OrderService {
     Order createOrderWithItems(Order order, List<OrderItem> orderItems);
 
     /**
+     * Creates an order for a customer (or none, when customerId is null) and adds its items.
+     *
+     * @throws com.example.inventix.exception.NotFoundException if there is no customer with this id
+     */
+    Order createOrderWithItems(Order order, Long customerId, List<OrderItem> orderItems);
+
+    /**
+     * Sets or clears (null) the customer of an order in any status, since it only corrects who the order is for.
+     *
+     * @throws com.example.inventix.exception.NotFoundException if there is no customer with this id
+     */
+    Order setOrderCustomer(Long id, Long customerId);
+
+    /**
      * Returns the order created earlier with this Idempotency-Key, if any.
      */
     Optional<Order> findOrderByIdempotencyKey(String idempotencyKey);
@@ -40,12 +54,12 @@ public interface OrderService {
     List<Order> getOrdersByStatus(OrderStatus status);
 
     /**
-     * Orders newest first, optionally filtered by status, with their items loaded.
+     * Orders newest first, optionally filtered by status and customer, with their items loaded.
      * Without page and size every match is returned.
      *
      * @throws com.example.inventix.exception.BadRequestException for an invalid page or size
      */
-    Page<Order> searchOrders(OrderStatus status, Integer page, Integer size);
+    Page<Order> searchOrders(OrderStatus status, Long customerId, Integer page, Integer size);
 
     Order updateOrderStatus(Long id, OrderStatus status);
 }
