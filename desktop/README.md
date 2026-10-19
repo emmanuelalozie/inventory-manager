@@ -16,6 +16,8 @@ It covers:
   The History button lists the product's stock movements (date, reason, change, note, order), newest first.
 - **Orders:** list and filter by status, create an order from a product picker, view an order's items and total,
   add items, change item quantities, remove items, change the status (ship, deliver, cancel) and delete orders.
+  Shipped and delivered orders have **Return items**, which puts what the customer sent back into stock and shows
+  how much of each line has come back.
 - **Suppliers:** list, create, edit and delete suppliers.
 - **Purchase orders:** list and filter by status or supplier, draft a purchase order with several lines, mark it as
   ordered, receive what arrived (in parts), cancel the rest of a single line, close or cancel it, delete drafts, and
