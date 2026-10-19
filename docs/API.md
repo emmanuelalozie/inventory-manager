@@ -201,6 +201,7 @@ changed or deleted through the API.
 | `SALE` | An item is added to an order, or an item's quantity is raised |
 | `CANCEL` | An item is removed or its quantity lowered, an order is replaced with `PUT`, cancelled, or deleted while `PENDING` |
 | `RECEIPT` | Stock received on a purchase order (`POST /api/purchase-orders/{id}/receipts`) |
+| `RETURN` | A customer sent units back on a shipped or delivered order (`POST /api/orders/{id}/returns`, `orderId` set) |
 | `PRODUCTION` | A production run is completed (`PATCH /api/production-runs/{id}/status`) |
 | `CONSUMPTION` | Components used up by a completed production run (`productionRunId` set) |
 | `ADJUSTMENT` | `PATCH /api/products/{id}/stock` (note required), and the starting stock of a new product (note `"Initial stock"`) |
@@ -302,6 +303,8 @@ For nested fields, `field` uses paths like `items[0].quantity`.
 | POST | `/api/orders` | 201 | Create an order, optionally with items |
 | PUT | `/api/orders/{id}` | 200 | Replace all items of a `PENDING` order |
 | PATCH | `/api/orders/{id}/status` | 200 | Change an order's status |
+| GET | `/api/orders/{id}/returns` | 200 | Units sold, returned and still returnable per product |
+| POST | `/api/orders/{id}/returns` | 200 | Put units a customer sent back into stock |
 | DELETE | `/api/orders/{id}` | 204 | Delete an order |
 | GET | `/api/orders/{orderId}/items` | 200 | List an order's items |
 | POST | `/api/orders/{orderId}/items` | 201 | Add an item to a `PENDING` order |
@@ -736,6 +739,46 @@ Request: same body as `POST /api/orders`.
 - **400**: validation failed
 - **404**: no order with that id, or a `productId` doesn't exist
 - **409**: the order isn't `PENDING`, or there isn't enough stock
+
+#### `GET /api/orders/{id}/returns` and `POST /api/orders/{id}/returns`
+
+Customer returns on a `SHIPPED` or `DELIVERED` order. Returns are counted per product, so a product listed on two
+lines of the order is one entry here. Returned units go back into stock with a `RETURN` movement that points at the
+order, with the note `Returned from order #<id>` (plus `: <note>` when one is given). The order's items, total and
+status don't change. Units that came back damaged can be taken out again with `PATCH /api/products/{id}/stock`.
+
+Request (`POST`):
+
+```json
+{ "lines": [{ "productId": 1, "quantity": 2 }], "note": "Wrong colour" }
+```
+
+| Field | Rules |
+|---|---|
+| `lines` | Required, at least one; a product may appear only once |
+| `lines[].productId` | Required, must be on the order |
+| `lines[].quantity` | Required, > 0, at most what is still returnable |
+| `note` | Optional, max 400 characters |
+
+Both return the order's returns after the change:
+
+```json
+{
+  "orderId": 1,
+  "lines": [
+    { "productId": 1, "productSku": "WM-001", "productName": "Wireless Mouse",
+      "quantitySold": 3, "quantityReturned": 2, "quantityReturnable": 1 }
+  ]
+}
+```
+
+- **200**: the returns
+- **400**: validation failed, a product isn't on the order or is listed twice, or more than is returnable
+- **404**: no order with that id
+- **409**: (`POST`) the order isn't `SHIPPED` or `DELIVERED`
+
+Top sellers (`GET /api/reports/top-sellers`) still count the units sold on an order, not net of returns; returns
+show in the stock changes report as `RETURN`.
 
 #### `PATCH /api/orders/{id}/status`
 

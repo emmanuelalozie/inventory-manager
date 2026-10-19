@@ -1311,3 +1311,9 @@ textarea.invalid {
 .text-danger {
   color: var(--danger);
 }
+
+/* Quantity boxes in the Return items dialog */
+.return-input {
+  width: 6rem;
+  text-align: right;
+}

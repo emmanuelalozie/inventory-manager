@@ -19,11 +19,11 @@ Inventix is an inventory app for a small business run from one computer: a Sprin
 ## Why use it
 
 - **Stock adds up.** Every change (a sale, a cancellation, a receipt, a production run, the components it used, a manual adjustment) writes a movement with its reason, time, note and the order behind it. A manual adjustment needs a note, a stocktake sets everything you counted in one go (and refuses if stock moved while you were counting), a change that would take stock below zero is refused, and two edits of the same product at once can't overwrite each other (the second gets a 409 and reloads).
-- **Orders hold stock.** Adding an item to a pending order takes the stock straight away, and lowering, removing or cancelling gives it back. The unit price is fixed when the item is added. Shipped and delivered orders are kept as a record and can't be deleted, and a retried create with the same `Idempotency-Key` returns the first order instead of making a second.
+- **Orders hold stock.** Adding an item to a pending order takes the stock straight away, and lowering, removing or cancelling gives it back. The unit price is fixed when the item is added. Shipped and delivered orders are kept as a record and can't be deleted, but take customer returns, which put the units back in stock without going past what was sold, and a retried create with the same `Idempotency-Key` returns the first order instead of making a second.
 - **Restocking is a draft, not a surprise.** Each product is bought from a supplier or made in-house, with a reorder point and quantity. Restock (or Restock all) adds the reorder quantity to that supplier's draft purchase order or plans a production run, and counts what's already on order, so nothing is bought or made until you say so.
 - **Deliveries can come in parts.** A purchase order is received in as many parts as arrive, each part adds stock and updates the product's unit cost, and the rest of a line (or the whole order) can be closed when it won't come. It prints as a clean page for the supplier.
 - **Production uses up its parts.** A made product can list its components. Completing a run shows what it will use, and if one is short nothing changes at all.
-- **Reports answer the money questions.** Stock value at selling price and at cost per category, stock changes per reason and top sellers for any range of days, and CSV downloads of each that open straight in Excel.
+- **Reports answer the money questions.** Stock value at selling price and at cost per category, stock changes per reason and top sellers (counted before returns) for any range of days, and CSV downloads of each that open straight in Excel.
 - **Your data stays yours.** It's an H2 file in your own user folder, not in the project folder, with a backup every day and on every shutdown, one-click backups to a `.zip`, and a restore that keeps the database it replaces. Point `INVENTIX_BACKUP_DIR` at a OneDrive, Google Drive or Dropbox folder and every backup leaves the computer too. Caveats: it's for one user on one machine (any program on that computer can call the API), and the desktop window doesn't start the backend for you yet.
 
 <img src=".github/assets/purchase-order.png" alt="Purchase order number 1 from Harbor Electronics, marked Partially received, with Receive stock, Close (rest won't arrive) and Print buttons: 12 27-inch monitors ordered with none received yet, and 30 USB-C hubs ordered with 20 received and 10 still to come, each line with a Cancel rest link, unit costs of $182.00 and $17.25, and a total cost of $2,701.50." />
@@ -48,6 +48,7 @@ Inventix is an inventory app for a small business run from one computer: a Sprin
 | See every change to a product's stock | History, on the product |
 | Manage categories, or filter products by one | Categories, and the category filter, in Products |
 | Take an order, change items, ship, deliver or cancel | Orders |
+| Put items a customer sent back into stock | Return items, on a shipped or delivered order |
 | See what needs reordering and fill drafts for it | The dashboard's Reorder card: Restock or Restock all |
 | Send, receive, close, cancel or print a purchase order | Purchase orders |
 | Stop waiting for the rest of one purchase order line | Cancel rest, on the line |
@@ -66,7 +67,7 @@ Inventix is an inventory app for a small business run from one computer: a Sprin
 - **Purchase orders:** `DRAFT` → `ORDERED` → `PARTIALLY_RECEIVED` → `RECEIVED`, with `CLOSED` when the rest won't come and `CANCELLED` before anything arrives. Only drafts can be edited, and receiving more than is still to come is refused.
 - **Production runs:** `PLANNED` → `COMPLETED` or `CANCELLED`. Stock changes only on completion.
 - **Editing a product never changes its stock.** Use Stock instead, so the change gets a reason and a note.
-- **Movement reasons:** `SALE`, `CANCEL` (returned to stock), `RECEIPT`, `PRODUCTION`, `CONSUMPTION` (used in production) and `ADJUSTMENT` (including starting stock and stocktakes).
+- **Movement reasons:** `SALE`, `CANCEL` (returned to stock), `RECEIPT`, `RETURN` (a customer sent it back), `PRODUCTION`, `CONSUMPTION` (used in production) and `ADJUSTMENT` (including starting stock and stocktakes).
 
 </details>
 
@@ -128,6 +129,7 @@ The backend owns every rule: the window only shows what the API returns and send
 | `config/WebConfig.java`, `OpenApiConfig.java`, `DataSeeder.java` | CORS for the window, the Swagger description, the sample products on a first start |
 | `service/impl/ProductServiceImpl.java` | Products and `adjustStock`, the one place stock changes, with its ledger entry |
 | `service/impl/OrderServiceImpl.java`, `OrderItemServiceImpl.java` | Orders, their items and statuses, reserving and returning stock, idempotent creates |
+| `service/impl/OrderReturnServiceImpl.java` | Customer returns on shipped and delivered orders, counted from the ledger |
 | `service/impl/PurchaseOrderServiceImpl.java` | Purchase orders: drafts, receipts in parts, cancelling the rest of a line, closing |
 | `service/impl/ProductionRunServiceImpl.java`, `BillOfMaterialsServiceImpl.java` | Production runs and the components they use up, with loop checks |
 | `service/impl/RestockServiceImpl.java` | The reorder list and Restock |

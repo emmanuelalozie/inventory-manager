@@ -10,6 +10,8 @@ public enum MovementReason {
     CANCEL,
     /** Stock received from a supplier. */
     RECEIPT,
+    /** Stock a customer sent back after the order shipped. */
+    RETURN,
     /** Stock made in-house. */
     PRODUCTION,
     /** Components used up by a completed production run. */
