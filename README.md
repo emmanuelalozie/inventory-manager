@@ -66,7 +66,7 @@ Inventix is an inventory app for a small business run from one computer: a Sprin
 - **Purchase orders:** `DRAFT` → `ORDERED` → `PARTIALLY_RECEIVED` → `RECEIVED`, with `CLOSED` when the rest won't come and `CANCELLED` before anything arrives. Only drafts can be edited, and receiving more than is still to come is refused.
 - **Production runs:** `PLANNED` → `COMPLETED` or `CANCELLED`. Stock changes only on completion.
 - **Editing a product never changes its stock.** Use Stock instead, so the change gets a reason and a note.
-- **Movement reasons:** `SALE`, `CANCEL` (returned to stock), `RECEIPT`, `PRODUCTION`, `CONSUMPTION` (used in production) and `ADJUSTMENT` (including starting stock).
+- **Movement reasons:** `SALE`, `CANCEL` (returned to stock), `RECEIPT`, `PRODUCTION`, `CONSUMPTION` (used in production) and `ADJUSTMENT` (including starting stock and stocktakes).
 
 </details>
 
