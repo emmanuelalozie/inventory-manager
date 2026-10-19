@@ -1,21 +1,12 @@
 # App icons
 
-This folder needs the icon files listed in `tauri.conf.json` (`bundle.icon`):
+The icons listed in `tauri.conf.json` (`bundle.icon`), plus `icon.png`, which Linux uses. They were made from the
+logo in `.github/assets/logo.svg`, rendered at 1024×1024.
 
-- `32x32.png`
-- `128x128.png`
-- `128x128@2x.png`
-- `icon.icns`
-- `icon.ico`
-
-They are binary files, so they are not checked in. On Windows, Tauri needs `icon.ico` even for
-`npm run dev`, so the build fails until you create them.
-
-Generate all of them from one square PNG (at least 1024×1024, ideally with a transparent background).
-Run this in PowerShell from the `desktop\` folder:
+To change them, render the new logo as a square PNG of at least 1024×1024 and run this in `desktop/`:
 
 ```powershell
 npx tauri icon path\to\logo.png
 ```
 
-The command writes the icons into this folder (`src-tauri\icons\`), plus a few extra sizes you can keep or delete.
+The command also writes Android, iOS and Windows Store sizes, which this app doesn't use; delete them.
