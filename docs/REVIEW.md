@@ -110,13 +110,18 @@ Ordered roughly by priority.
 
 ### O-1. Build and tests
 
-**Status:** backend fixed; desktop app still needs a first real run.
+**Status:** backend fixed; the desktop app has had a first real run on Linux, Windows is still to do.
 The earlier note that the Java code had never been compiled is out of date. The backend compiles and
 `gradlew.bat clean test` passes (206 tests after v2 Run 1). `npm test --prefix desktop` passes (21 tests). The
 Tauri app itself has not been built or clicked through against a live backend yet (it needs the icons from O-6).
 
-**Still open:** run `npm run dev` in `desktop/` against `gradlew.bat bootRun` and click through the main flows,
-including **Back up now**, a stock adjustment with a note and the History window.
+*First real run (Linux, 2026-10-18):* the debug build of the Tauri window, against the backend jar, showed the
+dashboard as Connected with the sample products, **Back up now** in Settings wrote a `.zip`, and a stock
+adjustment of +5 with the note "Recount" on the dashboard's low-stock list changed the stock and wrote an
+`ADJUSTMENT` movement with that note.
+
+**Still open:** the same run on Windows (`npm run dev` in `desktop\` against `gradlew.bat bootRun`), including the
+History window and a release build with `npm run build`.
 
 **v1 at-risk tests** (reviewed by reading the code before the first compile; all now pass):
 
@@ -194,12 +199,13 @@ Server-side search (name/SKU) would also let the desktop app stop filtering the 
 
 ### O-6. Tauri icons must be generated
 
-**Status:** open.
-`desktop/src-tauri/tauri.conf.json` lists bundle icons, but the binary icon files aren't in the repo. On Windows
-Tauri needs `icon.ico` even in development, so the desktop app won't build until they exist.
+**Status:** fixed. The icons are committed in `desktop/src-tauri/icons/`, made from `.github/assets/logo.svg` with
+`npx tauri icon`, so a fresh clone builds without that step. CI's `Desktop shell compiles` job runs `cargo check`
+on the shell, which also reads `tauri.conf.json` and the icons, and `Cargo.lock` is committed so it builds the
+same crates every time.
 
-**Recommendation:** run `npx tauri icon path\to\logo.png` once in `desktop/` (any square PNG of at least
-1024×1024) and commit the generated files in `desktop/src-tauri/icons/`. See `desktop/src-tauri/icons/README.md`.
+**Was:** `desktop/src-tauri/tauri.conf.json` listed bundle icons, but the binary icon files weren't in the repo. On
+Windows Tauri needs `icon.ico` even in development, so the desktop app wouldn't build until they existed.
 
 ### O-7. Desktop dev server port not confirmed
 

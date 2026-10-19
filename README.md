@@ -84,7 +84,6 @@ cd inventory-manager
 # in a second terminal
 cd desktop
 npm install                        # the Tauri CLI
-npx tauri icon path\to\logo.png    # once: the app icons aren't checked in
 npm run dev                        # opens the app window
 ```
 
@@ -158,7 +157,7 @@ Each change goes on a branch from `develop` with a pull request. [docs/REVIEW.md
 <details>
 <summary><strong>How this project is built</strong></summary>
 
-- **Pull requests:** CI (`.github/workflows/ci.yml`) runs `./gradlew build` on JDK 17 and the desktop tests on Node 22, and GitHub's CodeQL default setup scans the code.
+- **Pull requests:** CI (`.github/workflows/ci.yml`) runs `./gradlew build` on JDK 17, the desktop tests on Node 22 and `cargo check` on the Tauri shell, and GitHub's CodeQL default setup scans the code.
 - **Reviews:** each feature is tried in the real app (backend jar plus the UI in a headless browser) before its pull request opens, and the review file records open problems with a recommendation.
 - **Releases:** none yet. The backend is `0.0.1-SNAPSHOT` in `build.gradle` and the desktop is `0.1.0` in `desktop/package.json` and `desktop/src-tauri/tauri.conf.json`.
 
@@ -195,7 +194,7 @@ Server mode still only listens on `127.0.0.1`: opening it to other machines wait
 
 ## Deploy
 
-Inventix isn't a hosted service, and no builds are published yet: you build it from source. The backend is a single jar that needs Java 17, and the desktop window is built into installers on the system it runs on. The window doesn't start the backend, so start the jar first (shipping both as one app is on the roadmap). Generate the icons with `npx tauri icon` before the first desktop build.
+Inventix isn't a hosted service, and no builds are published yet: you build it from source. The backend is a single jar that needs Java 17, and the desktop window is built into installers on the system it runs on. The window doesn't start the backend, so start the jar first (shipping both as one app is on the roadmap).
 
 | System | File | Notes |
 | --- | --- | --- |
