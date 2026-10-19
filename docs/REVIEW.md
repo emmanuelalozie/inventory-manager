@@ -4,7 +4,7 @@ This review covers the code smells, bugs and missing features found while buildi
 handled, and what is still open. It started with v1 and has been updated through v2 Run 3, Spring Boot 4.1, H2
 2.4.240, automatic backups (F-25) and server mode (F-26).
 
-- **Last updated:** 2026-10-18
+- **Last updated:** 2026-10-19
 - **Starting point:** `develop` at `94aa41a` (merge of PR #5, `order-orderitem-fix`); current as of `e19b768` (merge of PR #19)
 - **Scope:** the Spring Boot backend, its tests, the docs, and the Tauri desktop UI in `desktop/`
 
@@ -163,6 +163,12 @@ with Gradle **9.8.1**, by way of 3.5.16. Boot 4 changes made here:
 - springdoc 3.1.x (the line for Boot 4.1).
 
 H2 moved to 2.4.240 afterwards (F-24, O-13).
+
+**Dependency check, 2026-10-19:** Spring Boot 4.1.1, Gradle 9.8.1, the dependency-management plugin 1.1.7,
+springdoc 3.1.1, the GitHub Actions in CI and the `tauri`, `tauri-build`, `serde` and `serde_json` crates are the
+newest stable releases. Updated in the lockfiles only: `@tauri-apps/cli` 2.12.1 to 2.12.3, and the Rust build crates
+`cc` 1.9.0, `find-msvc-tools` 0.1.15 and `tauri-winres` 0.3.7. Not taken: Spring Boot 4.2.0-M2, Gradle 9.9 and
+Tauri CLI 3 (pre-releases), and H2 2.5.252 (pinned, see O-13).
 
 **Was:** `build.gradle` used Spring Boot 3.3.5, out of open-source support since June 2025.
 
