@@ -16,7 +16,8 @@ It covers:
   The History button lists the product's stock movements (date, reason, change, note, order), newest first.
 - **Orders:** list and filter by status or customer, create an order for a customer from a product picker, set or
   change an order's customer, view an order's items and total,
-  add items, change item quantities, remove items, change the status (ship, deliver, cancel) and delete orders.
+  add items, change item quantities, remove items, change the status (ship, deliver, cancel), delete orders, and
+  print a packing slip (ship-to address, a box to tick per line) or a priced copy for the customer.
 - **Customers:** list, search, create, edit and delete customers (name, email, phone, address, notes), and open
   one customer's orders. A customer with orders can't be deleted.
 - **Suppliers:** list, create, edit and delete suppliers.
