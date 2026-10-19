@@ -22,6 +22,7 @@ import {
   getLowStockThreshold,
   setLowStockThreshold,
 } from "./settings.js";
+import { initStocktake, showStocktake } from "./stocktake.js";
 import { initCustomers, showCustomers } from "./customers.js";
 import { initSuppliers, showSuppliers } from "./suppliers.js";
 import {
@@ -39,6 +40,7 @@ import {
 const VIEWS = {
   dashboard: showDashboard,
   products: showProducts,
+  stocktake: showStocktake,
   orders: showOrders,
   customers: showCustomers,
   "purchase-orders": showPurchaseOrders,
@@ -51,6 +53,7 @@ const VIEWS = {
 const VIEW_TITLES = {
   dashboard: "Dashboard",
   products: "Products",
+  stocktake: "Stocktake",
   orders: "Orders",
   customers: "Customers",
   "purchase-orders": "Purchase orders",
@@ -297,6 +300,7 @@ function start() {
   initConnectionStatus();
   initDashboard();
   initProducts();
+  initStocktake();
   initOrders();
   initCustomers();
   initPurchaseOrders();

@@ -299,6 +299,7 @@ For nested fields, `field` uses paths like `items[0].quantity`.
 | PATCH | `/api/products/{id}/stock` | 200 | Add to or remove from stock, with a required note |
 | DELETE | `/api/products/{id}` | 204 | Delete a product and its movements |
 | GET | `/api/products/{id}/movements` | 200 | A product's stock movements, newest first |
+| POST | `/api/stocktake` | 200 | Set counted products to their counts, recording each difference |
 | GET | `/api/stock-movements` | 200 | All stock movements, newest first (optional `?productId=&reason=&from=&to=`) |
 | GET | `/api/orders` | 200 | List orders, newest first (optional `?status=&customerId=&page=&size=`) |
 | GET | `/api/orders/{id}` | 200 | Get one order with its items |
@@ -553,6 +554,46 @@ All filters are optional and can be combined. `from` and `to` are dates (`2026-1
   is after `to`
 
 ---
+
+### Stocktake
+
+#### `POST /api/stocktake`
+
+Books a count of the shelf. Each counted product's stock is set to `countedQuantity`, and each difference is written
+as an `ADJUSTMENT` movement with the note `Stocktake: <note>`. Products whose count matches are left alone, and
+products not in `lines` aren't touched. Every line is checked before anything is written, so one bad line changes
+nothing.
+
+`expectedQuantity` is optional: the stock the count sheet showed. When it's given and the product's stock has changed
+since (a sale or receipt while counting), the whole request is refused with **409** so the change isn't undone by
+mistake; reload the sheet and count those products again.
+
+Request:
+
+```json
+{
+  "note": "End of October count",
+  "lines": [
+    { "productId": 1, "countedQuantity": 117, "expectedQuantity": 120 },
+    { "productId": 5, "countedQuantity": 2, "expectedQuantity": 0 }
+  ]
+}
+```
+
+| Field | Rules |
+|---|---|
+| `note` | Required, max 480 characters |
+| `lines` | Required, at least one; a product may appear only once |
+| `lines[].productId` | Required |
+| `lines[].countedQuantity` | Required, 0 or more |
+| `lines[].expectedQuantity` | Optional |
+
+- **200**: `{ "counted": 2, "changes": [{ "productId": 1, "productSku": "WM-001", "productName": "Wireless Mouse",
+  "before": 120, "after": 117, "delta": -3 }, ...] }`, with only the products that changed in `changes`
+- **400**: validation failed, or a product is counted twice
+- **404**: a `productId` doesn't exist
+- **409**: a product's stock no longer matches its `expectedQuantity`; the message names each one with its old and
+  new stock
 
 ### Backup
 

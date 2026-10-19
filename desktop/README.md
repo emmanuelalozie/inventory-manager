@@ -14,6 +14,9 @@ It covers:
   Products have an optional category and unit cost; filter the list by category, and manage categories with the
   Categories button.
   The History button lists the product's stock movements (date, reason, change, note, order), newest first.
+- **Stocktake:** a count sheet of every product, searchable, with its stock when loaded. Enter what you counted,
+  and the differences are booked together as adjustments with one note. If stock moved after the sheet was
+  loaded, nothing is booked and the sheet reloads with your counts kept.
 - **Orders:** list and filter by status or customer, create an order for a customer from a product picker, set or
   change an order's customer, view an order's items and total,
   add items, change item quantities, remove items, change the status (ship, deliver, cancel), delete orders, and
@@ -65,7 +68,8 @@ desktop\
 │       ├── production.js
 │       ├── suppliers.js
 │       ├── reports.js
-│       └── customers.js
+│       ├── customers.js
+│       └── stocktake.js
 └── src-tauri\              The Rust shell around the webview
     ├── Cargo.toml
     ├── build.rs

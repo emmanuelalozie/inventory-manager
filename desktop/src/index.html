@@ -18,6 +18,7 @@
         <nav class="nav" aria-label="Main">
           <a class="nav-link" href="#/dashboard" data-view="dashboard">Dashboard</a>
           <a class="nav-link" href="#/products" data-view="products">Products</a>
+          <a class="nav-link" href="#/stocktake" data-view="stocktake">Stocktake</a>
           <a class="nav-link" href="#/orders" data-view="orders">Orders</a>
           <a class="nav-link" href="#/customers" data-view="customers">Customers</a>
           <a class="nav-link" href="#/purchase-orders" data-view="purchase-orders">Purchase orders</a>
@@ -104,6 +105,38 @@
           <div class="card card-flush">
             <div id="products-table"></div>
           </div>
+        </section>
+
+        <!-- Stocktake -->
+        <section class="view" data-view="stocktake" hidden>
+          <div class="view-header">
+            <div>
+              <h1>Stocktake</h1>
+              <p class="muted" id="stocktake-summary"></p>
+            </div>
+            <div class="actions">
+              <input
+                type="search"
+                id="stocktake-search"
+                class="search"
+                placeholder="Find a product by name or SKU"
+                aria-label="Find a product"
+              />
+              <button type="button" class="button" id="stocktake-reload">Reload sheet</button>
+            </div>
+          </div>
+          <form class="card stocktake-form" id="stocktake-form" novalidate>
+            <label class="field grow">
+              <span class="field-label">Note <span class="req">*</span></span>
+              <input name="note" maxlength="480" placeholder="e.g. End of month count" autocomplete="off">
+              <span class="field-error" data-error-for="note"></span>
+            </label>
+            <button type="submit" class="button button-primary" id="stocktake-submit">Book differences</button>
+          </form>
+          <div class="card card-flush">
+            <div id="stocktake-table"></div>
+          </div>
+          <p class="hint">Type what's on the shelf. Leave a product blank to skip it. Booking sets each counted product to its count and records the difference as an adjustment with your note; products that match are left alone.</p>
         </section>
 
         <!-- Purchase orders -->
