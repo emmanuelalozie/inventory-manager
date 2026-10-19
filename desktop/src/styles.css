@@ -1285,6 +1285,21 @@ textarea.invalid {
   #print-area .num {
     text-align: right;
   }
+
+  /* An empty box to tick on a packing slip */
+  #print-area td.check::before {
+    content: "";
+    display: inline-block;
+    width: 0.9rem;
+    height: 0.9rem;
+    border: 1px solid #000;
+  }
+
+  #print-area th.check,
+  #print-area td.check {
+    text-align: center;
+    width: 4.5rem;
+  }
 }
 
 

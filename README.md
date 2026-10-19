@@ -19,7 +19,7 @@ Inventix is an inventory app for a small business run from one computer: a Sprin
 ## Why use it
 
 - **Stock adds up.** Every change (a sale, a cancellation, a receipt, a production run, the components it used, a manual adjustment) writes a movement with its reason, time, note and the order behind it. A manual adjustment needs a note, a change that would take stock below zero is refused, and two edits of the same product at once can't overwrite each other (the second gets a 409 and reloads).
-- **Orders know who they're for.** Each order can have a customer, with their contact details and address, and the order list can be filtered to one customer. The customer can be corrected on any order, even a shipped one, and a customer with orders can't be deleted.
+- **Orders know who they're for.** Each order can have a customer, with their contact details and address, and the order list can be filtered to one customer. An order prints as a packing slip with the customer's address and a box to tick per line, or as a priced copy for the customer. The customer can be corrected on any order, even a shipped one, and a customer with orders can't be deleted.
 - **Orders hold stock.** Adding an item to a pending order takes the stock straight away, and lowering, removing or cancelling gives it back. The unit price is fixed when the item is added. Shipped and delivered orders are kept as a record and can't be deleted, but take customer returns, which put the units back in stock without going past what was sold, and a retried create with the same `Idempotency-Key` returns the first order instead of making a second.
 - **Restocking is a draft, not a surprise.** Each product is bought from a supplier or made in-house, with a reorder point and quantity. Restock (or Restock all) adds the reorder quantity to that supplier's draft purchase order or plans a production run, and counts what's already on order, so nothing is bought or made until you say so.
 - **Deliveries can come in parts.** A purchase order is received in as many parts as arrive, each part adds stock and updates the product's unit cost, and the rest of a line (or the whole order) can be closed when it won't come. It prints as a clean page for the supplier.
@@ -50,6 +50,7 @@ Inventix is an inventory app for a small business run from one computer: a Sprin
 | Take an order, change items, ship, deliver or cancel | Orders |
 | Add, edit or find customers, or see one customer's orders | Customers (Orders, on the customer) |
 | Set or change who an order is for | The customer picker in New order, or Change on the order |
+| Print a packing slip, or the order with prices for the customer | Packing slip or Print order, on the order |
 | Put items a customer sent back into stock | Return items, on a shipped or delivered order |
 | See what needs reordering and fill drafts for it | The dashboard's Reorder card: Restock or Restock all |
 | Send, receive, close, cancel or print a purchase order | Purchase orders |
