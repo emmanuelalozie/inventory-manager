@@ -59,6 +59,12 @@ public interface StockMovementRepository extends JpaRepository<StockMovement, Lo
 
     List<StockMovement> findByOrderId(Long orderId);
 
+    /** Per product: units returned against an order (the sum of its RETURN movements). */
+    @Query("select m.product.id, coalesce(sum(m.delta), 0) from StockMovement m"
+            + " where m.orderId = :orderId and m.reason = com.example.inventix.model.MovementReason.RETURN"
+            + " group by m.product.id")
+    List<Object[]> sumReturnedByProduct(@Param("orderId") Long orderId);
+
     @Query("select coalesce(sum(m.delta), 0) from StockMovement m where m.product.id = :productId")
     long sumDeltaByProductId(@Param("productId") Long productId);
 
