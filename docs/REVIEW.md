@@ -4,7 +4,7 @@ This review covers the code smells, bugs and missing features found while buildi
 handled, and what is still open. It started with v1 and has been updated through v2 Run 3, Spring Boot 4.1, H2
 2.4.240, automatic backups (F-25) and server mode (F-26).
 
-- **Last updated:** 2026-10-19
+- **Last updated:** 2026-10-26
 - **Starting point:** `develop` at `94aa41a` (merge of PR #5, `order-orderitem-fix`); current as of `e19b768` (merge of PR #19)
 - **Scope:** the Spring Boot backend, its tests, the docs, and the Tauri desktop UI in `desktop/`
 
@@ -84,7 +84,7 @@ Paths below are relative to `src/main/java/com/example/inventix/` unless they st
 | F-20 | **v2 Run 3:** CSV export (`/api/export/*.csv`): UTF-8 with BOM, RFC 4180 quoting, formula-like text defused. Desktop Reports view with downloads; category filter, Categories dialog and unit cost in Products. | `export/CsvWriter.java`, `controller/ExportController.java`, `desktop/src/js/reports.js`, `desktop/src/js/products.js` |
 | F-21 | **Run 2 follow-ups:** bills of materials (`/api/products/{id}/components`, migration `V8`) with loop checks; completing a run uses components up (`CONSUMPTION`), all or nothing. Cancelling the rest of one PO line (`quantity_cancelled`, `cancel-remaining`), with orders settling as `CLOSED` or `CANCELLED`. Desktop Components editor, completion preview with shortages, "Cancel rest" and a printable purchase order. | `model/ProductComponent.java`, `service/impl/BillOfMaterialsServiceImpl.java`, `service/impl/ProductionRunServiceImpl.java`, `service/impl/PurchaseOrderServiceImpl.java`, `V8__po_line_cancel_and_components.sql`, `desktop/src/js/purchase-orders.js`, `desktop/src/js/production.js`, `desktop/src/js/products.js` |
 | F-22 | **Ops:** per-user data folder with a one-time copy from `./data` (O-15), and restore on next start from Settings or `POST /api/backup/restore` (O-14). `GET /api/backup` lists backups and folders. | `config/DataLocation.java`, `config/DataLocationPostProcessor.java`, `META-INF/spring.factories`, `service/impl/BackupServiceImpl.java`, `controller/BackupController.java`, `desktop/src/js/main.js` |
-| F-23 | **Platform:** Spring Boot 4.1.1 and Gradle 9.8.1 (O-3). | `build.gradle`, `gradle/wrapper/gradle-wrapper.properties`, test imports, `config/DataLocationPostProcessor.java` |
+| F-23 | **Platform:** Spring Boot 4.1.2 and Gradle 9.8.2 (O-3). | `build.gradle`, `gradle/wrapper/gradle-wrapper.properties`, test imports, `config/DataLocationPostProcessor.java` |
 | F-24 | **H2 2.4.240** (O-13): pinned to the version Boot 4.1 manages, after checking that 2.2.224 files and backups open unchanged. | `build.gradle` |
 | F-26 | **Server mode** (O-2): `SPRING_PROFILES_ACTIVE=server` uses PostgreSQL with the same Flyway migrations, and turns off the per-user data folder, H2 console, zip backups (409) and sample data. Nullable date parameters in queries are cast, because PostgreSQL can't infer the type of `? is null` for `java.time` values. CI runs the tests against PostgreSQL 17 too. Still on `127.0.0.1` until sign-in exists; no data migration from H2 yet. | `application-server.properties`, `service/impl/BackupServiceImpl.java`, `repository/StockMovementRepository.java`, `repository/OrderItemRepository.java`, `build.gradle`, `.github/workflows/ci.yml`, `ServerModeTests` |
 | F-25 | **Automatic backups** (O-14): `inventix-auto-<timestamp>.zip` when the newest is older than `inventix.backup.auto.interval` (24h, checked a minute after start and hourly) and on shutdown; only the newest `inventix.backup.auto.keep` (14) are kept, and Back up now files are never deleted. A failed backup is logged and retried at the next check. Pointing `INVENTIX_BACKUP_DIR` at a synced folder takes the copies off the machine. | `config/AutomaticBackups.java`, `service/impl/BackupServiceImpl.java`, `application.properties` |
@@ -149,8 +149,8 @@ users with BCrypt hashes, H2 console off) **before** changing `server.address`. 
 
 ### O-3. Spring Boot 3.3.x is out of open-source support
 
-**Status:** fixed. `build.gradle` uses Spring Boot **4.1.1** (Spring Framework 7, Hibernate 7.4, Jackson 3, Flyway 12)
-with Gradle **9.8.1**, by way of 3.5.16. Boot 4 changes made here:
+**Status:** fixed. `build.gradle` uses Spring Boot **4.1.2** (Spring Framework 7, Hibernate 7.4, Jackson 3, Flyway 12)
+with Gradle **9.8.2**, by way of 3.5.16. Boot 4 changes made here:
 
 - Modular starters: `spring-boot-starter-webmvc` instead of `-web`, `spring-boot-starter-flyway` (Flyway's
   auto-configuration is no longer in the core module), `spring-boot-h2console` for `/h2-console`, and the
@@ -160,7 +160,7 @@ with Gradle **9.8.1**, by way of 3.5.16. Boot 4 changes made here:
 - `EnvironmentPostProcessor` moved to `org.springframework.boot` (and its `spring.factories` key with it).
 - Jackson 3: the test's `ObjectMapper` is `tools.jackson.databind.ObjectMapper`. The annotations used in the app
   (`com.fasterxml.jackson.annotation.*`) are the same in Jackson 3.
-- springdoc 3.1.x (the line for Boot 4.1).
+- springdoc 3.2.x (the line for Boot 4.1.2 and later).
 
 H2 moved to 2.4.240 afterwards (F-24, O-13).
 
@@ -169,6 +169,13 @@ springdoc 3.1.1, the GitHub Actions in CI and the `tauri`, `tauri-build`, `serde
 newest stable releases. Updated in the lockfiles only: `@tauri-apps/cli` 2.12.1 to 2.12.3, and the Rust build crates
 `cc` 1.9.0, `find-msvc-tools` 0.1.15 and `tauri-winres` 0.3.7. Not taken: Spring Boot 4.2.0-M2, Gradle 9.9 and
 Tauri CLI 3 (pre-releases), and H2 2.5.252 (pinned, see O-13).
+
+**Dependency check, 2026-10-26:** Spring Boot 4.1.1 to **4.1.2**, Gradle 9.8.1 to **9.8.2** (the wrapper scripts and
+jar are regenerated with it), springdoc 3.1.1 to **3.2.0** (the line that builds on Boot 4.1.2), `@tauri-apps/cli`
+2.12.3 to 2.12.4 and the Rust crates to `tauri` 2.12.5, `tauri-build` 2.7.4, `tokio` 1.54.1 and the rest of
+`cargo update`. Boot 4.1.2 still manages H2 2.4.240, so the pin is unchanged. The dependency-management plugin
+1.1.7, the GitHub Actions in CI and `serde`/`serde_json` are already current. Not taken: Spring Boot 4.2.0-RC1,
+Tauri CLI 3 (pre-releases) and H2 2.5.252 (pinned, see O-13).
 
 **Was:** `build.gradle` used Spring Boot 3.3.5, out of open-source support since June 2025.
 
@@ -283,7 +290,7 @@ consider adding `javascript-typescript` for `desktop/src/`.
 
 ### O-11. No OpenAPI / Swagger UI
 
-**Status:** fixed. `springdoc-openapi-starter-webmvc-ui` 3.1.1 (the line for Spring Boot 4.1; it was 2.8.17 on Boot 3.5) serves the
+**Status:** fixed. `springdoc-openapi-starter-webmvc-ui` 3.2.0 (the line for Spring Boot 4.1.2; it was 2.8.17 on Boot 3.5) serves the
 generated description at `/v3/api-docs` and Swagger UI at `/swagger-ui.html`, with the title set in
 `config/OpenApiConfig.java`. Like the API, they are only reachable from this machine. `docs/API.md` stays the
 reference for the behaviour rules. Covered by two tests in `InventixApplicationTests`.
