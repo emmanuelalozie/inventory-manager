@@ -4,7 +4,7 @@ This review covers the code smells, bugs and missing features found while buildi
 handled, and what is still open. It started with v1 and has been updated through v2 Run 3, Spring Boot 4.1, H2
 2.4.240, automatic backups (F-25) and server mode (F-26).
 
-- **Last updated:** 2026-10-26
+- **Last updated:** 2026-11-02
 - **Starting point:** `develop` at `94aa41a` (merge of PR #5, `order-orderitem-fix`); current as of `e19b768` (merge of PR #19)
 - **Scope:** the Spring Boot backend, its tests, the docs, and the Tauri desktop UI in `desktop/`
 
@@ -176,6 +176,10 @@ jar are regenerated with it), springdoc 3.1.1 to **3.2.0** (the line that builds
 `cargo update`. Boot 4.1.2 still manages H2 2.4.240, so the pin is unchanged. The dependency-management plugin
 1.1.7, the GitHub Actions in CI and `serde`/`serde_json` are already current. Not taken: Spring Boot 4.2.0-RC1,
 Tauri CLI 3 (pre-releases) and H2 2.5.252 (pinned, see O-13).
+
+**Dependency check, 2026-11-02:** no new releases of Spring Boot, Gradle, springdoc, the dependency-management
+plugin, the Tauri CLI or the direct Rust crates since 2026-10-26. `cargo update` picked up patch releases of
+transitive crates (`cc` 1.11.0, `wasm-bindgen` 0.2.130, `log` 0.4.35 and others).
 
 **Was:** `build.gradle` used Spring Boot 3.3.5, out of open-source support since June 2025.
 
