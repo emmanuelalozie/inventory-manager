@@ -164,6 +164,7 @@ Each change goes on a branch from `develop` with a pull request. [docs/REVIEW.md
 
 - **Pull requests:** CI (`.github/workflows/ci.yml`) runs `./gradlew build` on JDK 17, the desktop tests on Node 22 and `cargo check` on the Tauri shell, and GitHub's CodeQL default setup scans the code.
 - **Reviews:** each feature is tried in the real app (backend jar plus the UI in a headless browser) before its pull request opens, and the review file records open problems with a recommendation.
+- **Dependencies:** checked every Monday. Patch and minor releases go in a pull request with the check recorded under O-3 in the review; H2 changes only after the O-13 checks.
 - **Releases:** none yet. The backend is `0.0.1-SNAPSHOT` in `build.gradle` and the desktop is `0.1.0` in `desktop/package.json` and `desktop/src-tauri/tauri.conf.json`.
 
 </details>
